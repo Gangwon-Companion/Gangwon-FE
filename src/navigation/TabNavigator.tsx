@@ -6,6 +6,7 @@ import { Ionicons } from '@expo/vector-icons';
 import HomeScreen from '../screens/home/HomeScreen';
 import MyTravelCoursesScreen from '../screens/travel/MyTravelCoursesScreen';
 import AIRecommendScreen from '../screens/travel/AIRecommendScreen';
+import MapTestScreen from '../screens/map/MapTestScreen';
 import CommunityScreen from '../screens/community/CommunityScreen';
 import MyPageScreen from '../screens/mypage/MyPageScreen';
 
@@ -13,6 +14,7 @@ export type TabParamList = {
   홈: undefined;
   내여행: undefined;
   AI추천: undefined;
+  지도테스트: undefined;
   커뮤니티: undefined;
   마이: undefined;
 };
@@ -53,6 +55,13 @@ const TAB_CONFIG: TabConfig[] = [
     icon: 'sparkles-outline',
     iconFocused: 'sparkles',
     component: AIRecommendScreen,
+  },
+  {
+    name: '지도테스트',
+    label: '지도테스트',
+    icon: 'navigate-outline',
+    iconFocused: 'navigate',
+    component: MapTestScreen,
   },
   {
     name: '커뮤니티',

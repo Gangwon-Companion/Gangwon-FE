@@ -7,9 +7,16 @@
     "icon": "./assets/icon.png",
     "userInterfaceStyle": "light",
     "ios": {
-      "supportsTablet": true
+      "supportsTablet": true,
+      "bundleIdentifier": "com.gangwon.gangwonfe",
+      "infoPlist": {
+        "NSLocationWhenInUseUsageDescription": "길찾기를 위해 현재 위치가 필요합니다."
+      }
     },
     "android": {
+      "package": "com.gangwon.gangwonfe",
+      "permissions": ["ACCESS_FINE_LOCATION", "ACCESS_COARSE_LOCATION"],
+      "usesCleartextTraffic": true,
       "adaptiveIcon": {
         "backgroundColor": "#E6F4FE",
         "foregroundImage": "./assets/android-icon-foreground.png",
