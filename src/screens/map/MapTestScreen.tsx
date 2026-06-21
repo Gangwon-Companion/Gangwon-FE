@@ -1,11 +1,11 @@
-import React, { useRef, useState, useEffect } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   View,
   Text,
   StyleSheet,
   TouchableOpacity,
   Alert,
-  ActivityIndicator,
+  Linking,
   Platform,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -14,20 +14,15 @@ import * as Location from 'expo-location';
 
 const NAVER_CLIENT_ID = '3qp69wrk19';
 
-// ngrok 실행 후 발급된 URL로 교체 (재시작마다 바뀜)
-// 예: npx ngrok http 8080  →  https://xxxx.ngrok-free.app
-const BACKEND_URL = 'https://여기에-ngrok-url-입력.ngrok-free.app';
-
 // 테스트용 목적지 (춘천 닭갈비골목)
 const TEST_GOAL = { lat: 37.8813, lng: 127.7298, name: '춘천 닭갈비골목' };
+const APP_IDENTIFIER = 'com.gangwon.gangwonfe';
 
-type TravelMode = 'DRIVE' | 'WALK' | 'TRANSIT';
-
-const MODES: { key: TravelMode; label: string }[] = [
-  { key: 'DRIVE', label: '자동차' },
-  { key: 'WALK', label: '도보' },
-  { key: 'TRANSIT', label: '대중교통' },
-];
+const NAVER_MAP_STORE_URL = Platform.select({
+  ios: 'https://apps.apple.com/kr/app/id311867728',
+  android: 'market://details?id=com.nhn.android.nmap',
+  default: 'https://map.naver.com',
+});
 
 const mapHTML = `
 <!DOCTYPE html>
@@ -48,68 +43,17 @@ const mapHTML = `
       center: new naver.maps.LatLng(${TEST_GOAL.lat}, ${TEST_GOAL.lng}),
       zoom: 13
     });
-
-    var polyline = null;
-    var markers = [];
-
-    function clearMap() {
-      if (polyline) { polyline.setMap(null); polyline = null; }
-      markers.forEach(function(m) { m.setMap(null); });
-      markers = [];
-    }
-
-    function drawRoute(data) {
-      clearMap();
-
-      // data.path: [[lng, lat], ...]  (네이버 응답 형식)
-      var coords = data.path.map(function(p) {
-        return new naver.maps.LatLng(p[1], p[0]);
-      });
-
-      polyline = new naver.maps.Polyline({
-        path: coords,
-        strokeColor: '#008A9A',
-        strokeWeight: 5,
-        strokeOpacity: 0.9,
-        map: map
-      });
-
-      var startMarker = new naver.maps.Marker({
-        position: new naver.maps.LatLng(data.startLat, data.startLng),
+    new naver.maps.Marker({
+        position: new naver.maps.LatLng(${TEST_GOAL.lat}, ${TEST_GOAL.lng}),
         map: map,
-        title: '출발'
-      });
-      var goalMarker = new naver.maps.Marker({
-        position: new naver.maps.LatLng(data.goalLat, data.goalLng),
-        map: map,
-        title: '도착'
-      });
-      markers.push(startMarker, goalMarker);
-
-      var bounds = new naver.maps.LatLngBounds(coords[0], coords[0]);
-      coords.forEach(function(c) { bounds.extend(c); });
-      map.fitBounds(bounds, { top: 60, right: 40, bottom: 60, left: 40 });
-    }
-
-    function handleMessage(raw) {
-      try {
-        var msg = JSON.parse(raw);
-        if (msg.type === 'drawRoute') drawRoute(msg);
-      } catch(e) {}
-    }
-
-    // Android: document.addEventListener, iOS: window.addEventListener
-    document.addEventListener('message', function(e) { handleMessage(e.data); });
-    window.addEventListener('message', function(e) { handleMessage(e.data); });
+        title: ${JSON.stringify(TEST_GOAL.name)}
+    });
   </script>
 </body>
 </html>
 `;
 
 export default function MapTestScreen() {
-  const webViewRef = useRef<WebView>(null);
-  const [mode, setMode] = useState<TravelMode>('DRIVE');
-  const [loading, setLoading] = useState(false);
   const [location, setLocation] = useState<{ lat: number; lng: number } | null>(null);
 
   useEffect(() => {
@@ -129,39 +73,31 @@ export default function MapTestScreen() {
       Alert.alert('위치 확인 중', '현재 위치를 아직 가져오는 중입니다. 잠시 후 다시 시도해 주세요.');
       return;
     }
-    setLoading(true);
+    const params = [
+      ['slat', location.lat.toString()],
+      ['slng', location.lng.toString()],
+      ['sname', '현재 위치'],
+      ['dlat', TEST_GOAL.lat.toString()],
+      ['dlng', TEST_GOAL.lng.toString()],
+      ['dname', TEST_GOAL.name],
+      ['appname', APP_IDENTIFIER],
+    ]
+      .map(([key, value]) => `${key}=${encodeURIComponent(value)}`)
+      .join('&');
+    const routeUrl = `nmap://route/car?${params}`;
+
     try {
-      const url =
-        `${BACKEND_URL}/api/v1/navigation/directions` +
-        `?startLat=${location.lat}&startLng=${location.lng}` +
-        `&goalLat=${TEST_GOAL.lat}&goalLng=${TEST_GOAL.lng}` +
-        `&mode=${mode}`;
-
-      const res = await fetch(url);
-      if (!res.ok) throw new Error(`서버 오류 ${res.status}`);
-      const data = await res.json();
-
-      // 백엔드 응답: { route: { traoptimal|trafast: [{ path: [[lng, lat], ...] }] } }
-      // DRIVE → traoptimal, WALK → trafast 등 모드마다 키가 다름
-      const routeKey = Object.keys(data.route)[0];
-      const path: [number, number][] = data.route[routeKey][0].path;
-
-      const msg = JSON.stringify({
-        type: 'drawRoute',
-        path,
-        startLat: location.lat,
-        startLng: location.lng,
-        goalLat: TEST_GOAL.lat,
-        goalLng: TEST_GOAL.lng,
-      });
-
-      webViewRef.current?.injectJavaScript(
-        `handleMessage(${JSON.stringify(msg)}); true;`
-      );
-    } catch (e: any) {
-      Alert.alert('오류', e.message ?? '경로를 불러오지 못했습니다.');
-    } finally {
-      setLoading(false);
+      await Linking.openURL(routeUrl);
+    } catch {
+      Alert.alert('네이버 지도 앱 필요', '길찾기를 이용하려면 네이버 지도 앱을 설치해 주세요.', [
+        { text: '취소', style: 'cancel' },
+        {
+          text: '설치하기',
+          onPress: () => {
+            void Linking.openURL(NAVER_MAP_STORE_URL);
+          },
+        },
+      ]);
     }
   };
 
@@ -175,23 +111,8 @@ export default function MapTestScreen() {
         </Text>
       </View>
 
-      <View style={styles.modeRow}>
-        {MODES.map(({ key, label }) => (
-          <TouchableOpacity
-            key={key}
-            style={[styles.modeBtn, mode === key && styles.modeBtnActive]}
-            onPress={() => setMode(key)}
-          >
-            <Text style={[styles.modeBtnText, mode === key && styles.modeBtnTextActive]}>
-              {label}
-            </Text>
-          </TouchableOpacity>
-        ))}
-      </View>
-
       <WebView
-        ref={webViewRef}
-        source={{ html: mapHTML }}
+        source={{ html: mapHTML, baseUrl: 'https://map.naver.com' }}
         style={styles.map}
         javaScriptEnabled
         domStorageEnabled
@@ -201,15 +122,11 @@ export default function MapTestScreen() {
 
       <View style={styles.bottomBar}>
         <TouchableOpacity
-          style={[styles.routeBtn, (!location || loading) && styles.routeBtnDisabled]}
+          style={[styles.routeBtn, !location && styles.routeBtnDisabled]}
           onPress={handleFindRoute}
-          disabled={!location || loading}
+          disabled={!location}
         >
-          {loading ? (
-            <ActivityIndicator color="#fff" size="small" />
-          ) : (
-            <Text style={styles.routeBtnText}>길찾기</Text>
-          )}
+          <Text style={styles.routeBtnText}>네이버 지도에서 길찾기</Text>
         </TouchableOpacity>
       </View>
     </SafeAreaView>
@@ -228,25 +145,6 @@ const styles = StyleSheet.create({
   },
   title: { fontSize: 18, fontWeight: '700', color: '#1F2933' },
   subtitle: { fontSize: 12, color: '#6B7280', marginTop: 2 },
-  modeRow: {
-    flexDirection: 'row',
-    gap: 8,
-    paddingHorizontal: 16,
-    paddingVertical: 10,
-    borderBottomWidth: 1,
-    borderBottomColor: '#E5E7EB',
-  },
-  modeBtn: {
-    flex: 1,
-    paddingVertical: 8,
-    borderRadius: 8,
-    borderWidth: 1,
-    borderColor: '#D1D5DB',
-    alignItems: 'center',
-  },
-  modeBtnActive: { backgroundColor: PRIMARY, borderColor: PRIMARY },
-  modeBtnText: { fontSize: 13, fontWeight: '600', color: '#6B7280' },
-  modeBtnTextActive: { color: '#fff' },
   map: { flex: 1 },
   bottomBar: {
     padding: 16,

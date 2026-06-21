@@ -8,9 +8,15 @@ import {
   Image,
   StyleSheet,
   StatusBar,
-  SafeAreaView,
 } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
+import { useNavigation } from '@react-navigation/native';
+import type { CompositeNavigationProp } from '@react-navigation/native';
+import type { BottomTabNavigationProp } from '@react-navigation/bottom-tabs';
+import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
+import type { TabParamList } from '../../navigation/TabNavigator';
+import type { RootStackParamList } from '../../navigation/types';
 
 // ─── 색상 상수 ───────────────────────────────────────────────
 const COLORS = {
@@ -27,7 +33,16 @@ const COLORS = {
 };
 
 // ─── 더미 데이터 ──────────────────────────────────────────────
-const TABS = ['테마', '호텔', '맛집'];
+const TABS = [
+  { label: '테마', route: 'ThemeTab' },
+  { label: '호텔', route: 'HotelsTab' },
+  { label: '맛집', route: 'RestaurantsTab' },
+] as const;
+
+type HomeNavigationProp = CompositeNavigationProp<
+  BottomTabNavigationProp<TabParamList, '홈'>,
+  NativeStackNavigationProp<RootStackParamList>
+>;
 
 const POPULAR_PLACES = [
   {
@@ -59,6 +74,7 @@ const DEALS = [
 
 // ─── 메인 컴포넌트 ────────────────────────────────────────────
 export default function HomeScreen() {
+  const navigation = useNavigation<HomeNavigationProp>();
   const [activeTab, setActiveTab] = useState(0);
   const [searchText, setSearchText] = useState('');
 
@@ -115,12 +131,15 @@ export default function HomeScreen() {
           >
             {TABS.map((tab, index) => (
               <TouchableOpacity
-                key={tab}
-                onPress={() => setActiveTab(index)}
+                key={tab.route}
+                onPress={() => {
+                  setActiveTab(index);
+                  navigation.navigate(tab.route);
+                }}
                 style={[styles.tabBtn, activeTab === index && styles.tabBtnActive]}
               >
                 <Text style={[styles.tabText, activeTab === index && styles.tabTextActive]}>
-                  {tab}
+                  {tab.label}
                 </Text>
               </TouchableOpacity>
             ))}

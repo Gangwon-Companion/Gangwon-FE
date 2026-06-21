@@ -34,7 +34,7 @@ type NavProp = NativeStackNavigationProp<RootStackParamList>;
 type MenuItem = {
   icon: keyof typeof Ionicons.glyphMap;
   label: string;
-  screenName?: keyof RootStackParamList;
+  screenName?: 'Main';
 };
 
 // ─── 메뉴 데이터 ──────────────────────────────────────────────
