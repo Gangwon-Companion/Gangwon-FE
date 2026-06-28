@@ -2,8 +2,8 @@ import { useState } from 'react';
 import { Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
 import { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { ArrowLeft, Check, Eye, EyeOff, Plane } from 'lucide-react-native';
-import { colors } from '../constants/colors';
-import { RootStackParamList } from '../navigation/types';
+import { colors } from '../../constants/colors';
+import { RootStackParamList } from '../../navigation/types';
 
 type Props = NativeStackScreenProps<RootStackParamList, 'Login'>;
 
@@ -66,7 +66,7 @@ export default function LoginScreen({ navigation }: Props) {
           <Text style={styles.checkboxText}>자동 로그인</Text>
         </Pressable>
 
-        <Pressable style={styles.primaryButton} onPress={() => navigation.replace('Home')}>
+        <Pressable style={styles.primaryButton} onPress={() => navigation.replace('Main')}>
           <Text style={styles.primaryButtonText}>로그인</Text>
         </Pressable>
 

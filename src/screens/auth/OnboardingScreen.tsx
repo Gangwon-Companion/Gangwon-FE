@@ -1,8 +1,8 @@
 import { ImageBackground, Pressable, StyleSheet, Text, View } from 'react-native';
 import { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { Globe, Plane } from 'lucide-react-native';
-import { colors } from '../constants/colors';
-import { RootStackParamList } from '../navigation/types';
+import { colors } from '../../constants/colors';
+import { RootStackParamList } from '../../navigation/types';
 
 type Props = NativeStackScreenProps<RootStackParamList, 'Onboarding'>;
 

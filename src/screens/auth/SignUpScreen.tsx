@@ -2,8 +2,8 @@ import { useState } from 'react';
 import { Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
 import { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { ArrowLeft, Eye, EyeOff, Image } from 'lucide-react-native';
-import { colors } from '../constants/colors';
-import { RootStackParamList } from '../navigation/types';
+import { colors } from '../../constants/colors';
+import { RootStackParamList } from '../../navigation/types';
 
 type Props = NativeStackScreenProps<RootStackParamList, 'SignUp'>;
 
@@ -95,7 +95,7 @@ export default function SignUpScreen({ navigation }: Props) {
           </Pressable>
         </View>
 
-        <Pressable style={styles.primaryButton} onPress={() => navigation.replace('Home')}>
+        <Pressable style={styles.primaryButton} onPress={() => navigation.replace('Main')}>
           <Text style={styles.primaryButtonText}>회원가입</Text>
         </Pressable>
       </View>
