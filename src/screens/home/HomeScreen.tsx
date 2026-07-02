@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useCallback, useEffect, useState } from 'react';
 import {
   View,
   Text,
@@ -8,19 +8,29 @@ import {
   Image,
   StyleSheet,
   StatusBar,
+  ActivityIndicator,
+  Linking,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { useNavigation } from '@react-navigation/native';
 import { useBottomTabBarHeight } from '@react-navigation/bottom-tabs';
+import { getApiBaseUrl, requestHeaders } from './api';
 
 type PopularPeriod = 'today' | 'week' | 'month';
 
-type PopularPlace = {
-  image: string;
-  title: string;
-  location: string;
-  rating: string;
+type HotplaceItem = {
+  hotplaceId: number;
+  displayName: string;
+  areaName: string | null;
+  signguName: string | null;
+  congestionRate: number | null;
+  baseDate: string | null;
+};
+
+type HotplaceListResponse = {
+  totalCount: number;
+  items: HotplaceItem[];
 };
 
 const COLORS = {
@@ -47,69 +57,6 @@ const PERIOD_OPTIONS: Array<{ key: PopularPeriod; label: string }> = [
   { key: 'month', label: '한달' },
 ];
 
-const POPULAR_PLACES_BY_PERIOD: Record<PopularPeriod, PopularPlace[]> = {
-  today: [
-    {
-      image: 'https://images.unsplash.com/photo-1507525428034-b723cf961d3e?w=400&h=300&fit=crop',
-      title: '오늘 많이 보는 동해 바다',
-      location: '강릉',
-      rating: '4.9',
-    },
-    {
-      image: 'https://images.unsplash.com/photo-1506744038136-46273834b3fb?w=400&h=300&fit=crop',
-      title: '당일치기 힐링 숲길',
-      location: '춘천',
-      rating: '4.8',
-    },
-  ],
-  week: [
-    {
-      image: 'https://images.unsplash.com/photo-1501785888041-af3ef285b470?w=400&h=300&fit=crop',
-      title: '이번 주 인기 드라이브 코스',
-      location: '속초',
-      rating: '4.9',
-    },
-    {
-      image: 'https://images.unsplash.com/photo-1519046904884-53103b34b206?w=400&h=300&fit=crop',
-      title: '주말 감성 카페 거리',
-      location: '원주',
-      rating: '4.7',
-    },
-    {
-      image: 'https://images.unsplash.com/photo-1470770841072-f978cf4d019e?w=400&h=300&fit=crop',
-      title: '주간 전망 명소',
-      location: '평창',
-      rating: '4.8',
-    },
-  ],
-  month: [
-    {
-      image: 'https://images.unsplash.com/photo-1548013146-72479768bada?w=400&h=300&fit=crop',
-      title: '이번 달 가장 많이 찾은 여행지',
-      location: '정선',
-      rating: '4.9',
-    },
-    {
-      image: 'https://images.unsplash.com/photo-1500375592092-40eb2168fd21?w=400&h=300&fit=crop',
-      title: '가족 여행지 추천',
-      location: '동해',
-      rating: '4.8',
-    },
-    {
-      image: 'https://images.unsplash.com/photo-1472214103451-9374bd1c798e?w=400&h=300&fit=crop',
-      title: '인기 사진 명소',
-      location: '태백',
-      rating: '4.7',
-    },
-    {
-      image: 'https://images.unsplash.com/photo-1493246507139-91e8fad9978e?w=400&h=300&fit=crop',
-      title: '누적 조회수 높은 산책길',
-      location: '삼척',
-      rating: '4.6',
-    },
-  ],
-};
-
 const DEALS = [
   {
     image: 'https://images.unsplash.com/photo-1631049552057-403cdb8f0658?w=300&h=200&fit=crop',
@@ -129,8 +76,50 @@ export default function HomeScreen() {
   const [activeTab, setActiveTab] = useState(0);
   const [searchText, setSearchText] = useState('');
   const [popularPeriod, setPopularPeriod] = useState<PopularPeriod>('today');
+  const [popularPlaces, setPopularPlaces] = useState<HotplaceItem[]>([]);
+  const [popularLoading, setPopularLoading] = useState(true);
+  const [popularError, setPopularError] = useState<string | null>(null);
 
-  const popularPlaces = POPULAR_PLACES_BY_PERIOD[popularPeriod];
+  const openNaverMap = useCallback(async (place: HotplaceItem) => {
+    const query = [place.displayName, place.areaName].filter(Boolean).join(' ');
+    const url = `https://map.naver.com/v5/search/${encodeURIComponent(query)}`;
+
+    try {
+      await Linking.openURL(url);
+    } catch (error) {
+      console.warn('네이버 지도를 열지 못했습니다.', error);
+    }
+  }, []);
+
+  const loadPopularPlaces = useCallback(async (period: PopularPeriod, signal?: AbortSignal) => {
+    setPopularLoading(true);
+    setPopularError(null);
+
+    try {
+      const apiBaseUrl = await getApiBaseUrl(signal);
+      const response = await fetch(`${apiBaseUrl}/api/v1/promotions/hotplace?period=${period}`, {
+        headers: requestHeaders,
+        signal,
+      });
+      if (!response.ok) throw new Error(`인기 여행지 요청 실패 (${response.status})`);
+
+      const data: HotplaceListResponse = await response.json();
+      if (signal?.aborted) return;
+      setPopularPlaces(data.items);
+    } catch (loadError) {
+      if (signal?.aborted) return;
+      setPopularError(loadError instanceof Error ? loadError.message : '인기 여행지를 불러오지 못했습니다.');
+    } finally {
+      if (!signal?.aborted) setPopularLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    const controller = new AbortController();
+    void loadPopularPlaces(popularPeriod, controller.signal);
+
+    return () => controller.abort();
+  }, [popularPeriod, loadPopularPlaces]);
 
   return (
     <SafeAreaView style={styles.safeArea} edges={['top']}>
@@ -223,7 +212,7 @@ export default function HomeScreen() {
           </View>
 
           <View style={styles.sectionHeader}>
-            <Text style={styles.sectionTitle}>오늘의 인기 여행지</Text>
+            <Text style={styles.sectionTitle}>인기 여행지</Text>
             <View style={styles.periodSelector}>
               {PERIOD_OPTIONS.map((option) => {
                 const isActive = popularPeriod === option.key;
@@ -243,17 +232,41 @@ export default function HomeScreen() {
             </View>
           </View>
 
-          {popularPlaces.map((place, index) => (
-            <View key={`${popularPeriod}-${index}`} style={styles.placeCard}>
-              <Image source={{ uri: place.image }} style={styles.placeImage} />
+          {popularLoading && <ActivityIndicator size="large" color={COLORS.primary} style={styles.popularLoading} />}
+
+          {!popularLoading && popularError && (
+            <View style={styles.popularMessageBox}>
+              <Text style={styles.popularErrorText}>{popularError}</Text>
+              <TouchableOpacity
+                style={styles.popularRetryButton}
+                onPress={() => void loadPopularPlaces(popularPeriod)}
+              >
+                <Text style={styles.popularRetryButtonText}>다시 시도</Text>
+              </TouchableOpacity>
+            </View>
+          )}
+
+          {!popularLoading && !popularError && popularPlaces.length === 0 && (
+            <Text style={styles.popularEmptyText}>표시할 인기 여행지가 없습니다.</Text>
+          )}
+
+          {!popularLoading && !popularError && popularPlaces.map((place) => (
+            <TouchableOpacity
+              key={place.hotplaceId}
+              activeOpacity={0.85}
+              onPress={() => void openNaverMap(place)}
+              style={styles.placeCard}
+            >
+              <View style={[styles.placeImage, styles.placeImagePlaceholder]}>
+                <Ionicons name="map-outline" size={36} color={COLORS.textMuted} />
+              </View>
               <View style={styles.placeInfo}>
-                <Text style={styles.placeTitle}>{place.title}</Text>
+                <Text style={styles.placeTitle}>{place.displayName}</Text>
                 <View style={styles.placeRow}>
-                  <Text style={styles.placeLocation}>{place.location}</Text>
-                  <Text style={styles.placeRating}>★ {place.rating}</Text>
+                  <Text style={styles.placeLocation}>{place.areaName}</Text>
                 </View>
               </View>
-            </View>
+            </TouchableOpacity>
           ))}
 
           <Text style={styles.sectionTitle}>할인 프로모션</Text>
@@ -531,6 +544,41 @@ const styles = StyleSheet.create({
   placeImage: {
     width: '100%',
     height: 160,
+  },
+  placeImagePlaceholder: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: COLORS.bg,
+  },
+  popularLoading: {
+    marginVertical: 24,
+  },
+  popularMessageBox: {
+    alignItems: 'center',
+    paddingVertical: 32,
+    gap: 12,
+  },
+  popularErrorText: {
+    color: COLORS.red,
+    fontSize: 14,
+    textAlign: 'center',
+  },
+  popularRetryButton: {
+    backgroundColor: COLORS.primary,
+    borderRadius: 10,
+    paddingHorizontal: 20,
+    paddingVertical: 10,
+  },
+  popularRetryButtonText: {
+    color: COLORS.white,
+    fontSize: 14,
+    fontWeight: '600',
+  },
+  popularEmptyText: {
+    color: COLORS.textMuted,
+    fontSize: 14,
+    textAlign: 'center',
+    paddingVertical: 24,
   },
   placeInfo: {
     padding: 16,

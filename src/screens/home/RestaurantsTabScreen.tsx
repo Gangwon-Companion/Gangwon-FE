@@ -334,10 +334,7 @@ export default function RestaurantsTabScreen() {
                 </View>
 
                 <View style={styles.locationBlock}>
-                  <View style={styles.metaItem}>
-                    <Ionicons name="location-outline" size={14} color="#9CA3AF" />
-                    <Text style={styles.locationLabel}>주소</Text>
-                  </View>
+                  <Ionicons name="location-outline" size={14} color="#9CA3AF" />
                   <Text style={styles.locationText}>{formatLocationText(restaurant)}</Text>
                 </View>
 
@@ -561,24 +558,16 @@ const styles = StyleSheet.create({
     color: '#6B7280',
   },
   locationBlock: {
-    marginBottom: 10,
-  },
-  metaItem: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 4,
-    marginBottom: 6,
-  },
-  locationLabel: {
-    fontSize: 12,
-    fontWeight: '600',
-    color: '#6B7280',
+    marginBottom: 10,
   },
   locationText: {
+    flex: 1,
     fontSize: 13,
     color: '#374151',
     lineHeight: 18,
-    paddingLeft: 18,
   },
   ratingRow: {
     flexDirection: 'row',

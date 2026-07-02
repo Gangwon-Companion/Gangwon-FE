@@ -323,10 +323,7 @@ export default function HotelsTabScreen() {
                 </View>
 
                 <View style={styles.locationBlock}>
-                  <View style={styles.metaItem}>
-                    <Ionicons name="location-outline" size={14} color="#9CA3AF" />
-                    <Text style={styles.locationLabel}>지도 위치</Text>
-                  </View>
+                  <Ionicons name="location-outline" size={14} color="#9CA3AF" />
                   <Text style={styles.locationText}>{formatLocationText(hotel)}</Text>
                 </View>
 
@@ -552,29 +549,17 @@ const styles = StyleSheet.create({
     color: '#9CA3AF',
     marginTop: 2,
   },
-  metaItem: {
+  locationBlock: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 4,
-    marginBottom: 6,
-  },
-  locationBlock: {
     marginBottom: 10,
   },
-  locationLabel: {
-    fontSize: 12,
-    fontWeight: '600',
-    color: '#6B7280',
-  },
   locationText: {
+    flex: 1,
     fontSize: 13,
     color: '#374151',
     lineHeight: 18,
-    paddingLeft: 18,
-  },
-  metaText: {
-    fontSize: 13,
-    color: '#9CA3AF',
   },
   ratingRow: {
     flexDirection: 'row',
