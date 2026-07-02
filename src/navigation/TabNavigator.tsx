@@ -1,12 +1,12 @@
 import React from 'react';
-import { Platform, StyleSheet, View, Text } from 'react-native';
-import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
+import { Platform, Pressable, StyleSheet, Text, View } from 'react-native';
+import { createBottomTabNavigator, BottomTabBarProps } from '@react-navigation/bottom-tabs';
 import { Ionicons } from '@expo/vector-icons';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import HomeScreen from '../screens/home/HomeScreen';
 import MyTravelCoursesScreen from '../screens/travel/MyTravelCoursesScreen';
 import AIRecommendScreen from '../screens/travel/AIRecommendScreen';
-import MapTestScreen from '../screens/map/MapTestScreen';
 import CommunityScreen from '../screens/community/CommunityScreen';
 import MyPageScreen from '../screens/mypage/MyPageScreen';
 
@@ -14,7 +14,6 @@ export type TabParamList = {
   홈: undefined;
   내여행: undefined;
   AI추천: undefined;
-  지도테스트: undefined;
   커뮤니티: undefined;
   마이: undefined;
 };
@@ -57,13 +56,6 @@ const TAB_CONFIG: TabConfig[] = [
     component: AIRecommendScreen,
   },
   {
-    name: '지도테스트',
-    label: '지도테스트',
-    icon: 'navigate-outline',
-    iconFocused: 'navigate',
-    component: MapTestScreen,
-  },
-  {
     name: '커뮤니티',
     label: '커뮤니티',
     icon: 'people-outline',
@@ -79,18 +71,49 @@ const TAB_CONFIG: TabConfig[] = [
   },
 ];
 
-type TabIconProps = {
-  iconName: keyof typeof Ionicons.glyphMap;
-  label: string;
-  focused: boolean;
-};
+function CustomTabBar({ state, descriptors, navigation }: BottomTabBarProps) {
+  const insets = useSafeAreaInsets();
+  const tabBarHeight = (Platform.OS === 'ios' ? 56 : 64) + insets.bottom;
 
-function TabIcon({ iconName, label, focused }: TabIconProps) {
-  const color = focused ? COLORS.primary : COLORS.inactive;
   return (
-    <View style={styles.iconWrap}>
-      <Ionicons name={iconName} size={24} color={color} />
-      <Text style={[styles.label, { color }]}>{label}</Text>
+    <View
+      style={[
+        styles.tabBar,
+        {
+          height: tabBarHeight,
+          paddingBottom: 8 + insets.bottom,
+        },
+      ]}
+    >
+      {state.routes.map((route, index) => {
+        const focused = state.index === index;
+        const config = TAB_CONFIG[index];
+        const color = focused ? COLORS.primary : COLORS.inactive;
+
+        return (
+          <Pressable
+            key={route.key}
+            style={styles.tabItem}
+            onPress={() => {
+              const event = navigation.emit({
+                type: 'tabPress',
+                target: route.key,
+                canPreventDefault: true,
+              });
+              if (!focused && !event.defaultPrevented) {
+                navigation.navigate(route.name);
+              }
+            }}
+          >
+            <Ionicons
+              name={focused ? config.iconFocused : config.icon}
+              size={24}
+              color={color}
+            />
+            <Text style={[styles.label, { color }]}>{config.label}</Text>
+          </Pressable>
+        );
+      })}
     </View>
   );
 }
@@ -100,26 +123,14 @@ const Tab = createBottomTabNavigator<TabParamList>();
 export default function TabNavigator() {
   return (
     <Tab.Navigator
-      screenOptions={{
-        headerShown: false,
-        tabBarShowLabel: false,
-        tabBarStyle: styles.tabBar,
-      }}
+      screenOptions={{ headerShown: false }}
+      tabBar={(props) => <CustomTabBar {...props} />}
     >
       {TAB_CONFIG.map((tab) => (
         <Tab.Screen
           key={tab.name}
           name={tab.name}
           component={tab.component}
-          options={{
-            tabBarIcon: ({ focused }) => (
-              <TabIcon
-                iconName={focused ? tab.iconFocused : tab.icon}
-                label={tab.label}
-                focused={focused}
-              />
-            ),
-          }}
         />
       ))}
     </Tab.Navigator>
@@ -128,17 +139,13 @@ export default function TabNavigator() {
 
 const styles = StyleSheet.create({
   tabBar: {
+    flexDirection: 'row',
     backgroundColor: COLORS.white,
-    borderTopWidth: 1,
-    borderTopColor: COLORS.border,
-    height: Platform.OS === 'ios' ? 84 : 64,
     paddingTop: 8,
-    paddingBottom: Platform.OS === 'ios' ? 28 : 8,
     paddingHorizontal: 8,
-    elevation: 0,
-    shadowOpacity: 0,
   },
-  iconWrap: {
+  tabItem: {
+    flex: 1,
     alignItems: 'center',
     justifyContent: 'center',
     gap: 4,

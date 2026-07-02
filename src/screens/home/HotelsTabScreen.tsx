@@ -1,27 +1,28 @@
-import React, { useCallback, useEffect, useMemo, useState } from 'react';
+﻿import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   ActivityIndicator,
   Alert,
-  View,
-  Text,
-  ScrollView,
-  TouchableOpacity,
   Image,
   Linking,
   Platform,
-  StyleSheet,
   SafeAreaView,
+  ScrollView,
   StatusBar,
+  StyleSheet,
+  Text,
+  TextInput,
+  TouchableOpacity,
+  View,
 } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { Ionicons } from '@expo/vector-icons';
 import * as Location from 'expo-location';
 import type { RootStackParamList } from '../../navigation/types';
+import { getApiBaseUrl, requestHeaders } from './api';
 
 const THEME_COLOR = '#008A9A';
 const BG_COLOR = '#F7F8FA';
-const API_BASE_URL = process.env.EXPO_PUBLIC_API_URL?.replace(/\/$/, '');
 const APP_IDENTIFIER = 'com.gangwon.gangwonfe';
 const NAVER_MAP_STORE_URL = Platform.select({
   ios: 'https://apps.apple.com/kr/app/id311867728',
@@ -63,39 +64,52 @@ type Hotel = LodgingListItem & {
   imageUrl: string | null;
 };
 
-const requestHeaders = { 'ngrok-skip-browser-warning': 'true' };
+const formatLocationText = (hotel: Hotel) => {
+  if (hotel.address && hotel.region) {
+    if (hotel.address.includes(hotel.region)) return hotel.address;
+    return `${hotel.address} · ${hotel.region}`;
+  }
+
+  return hotel.address ?? hotel.region ?? '주소 정보 없음';
+};
 
 export default function HotelsTabScreen() {
   const navigation = useNavigation<NativeStackNavigationProp<RootStackParamList, 'HotelsTab'>>();
   const [selectedFilter, setSelectedFilter] = useState(0);
+  const [searchQuery, setSearchQuery] = useState('');
+  const [debouncedSearchQuery, setDebouncedSearchQuery] = useState('');
   const [hotels, setHotels] = useState<Hotel[]>([]);
+  const [totalCount, setTotalCount] = useState(0);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [openingHotelId, setOpeningHotelId] = useState<number | null>(null);
 
-  const loadHotels = useCallback(async () => {
-    if (!API_BASE_URL) {
-      setError('EXPO_PUBLIC_API_URL이 설정되지 않았습니다.');
-      setLoading(false);
-      return;
-    }
-
+  const loadHotels = useCallback(async (signal?: AbortSignal) => {
     setLoading(true);
     setError(null);
+
     try {
-      const listResponse = await fetch(`${API_BASE_URL}/api/v1/lodgings?size=50`, {
+      const apiBaseUrl = await getApiBaseUrl(signal);
+      const params = new URLSearchParams({ page: '0', size: '50' });
+      const keyword = debouncedSearchQuery.trim();
+      if (keyword) params.set('keyword', keyword);
+
+      const listResponse = await fetch(`${apiBaseUrl}/api/v1/lodgings?${params.toString()}`, {
         headers: requestHeaders,
+        signal,
       });
       if (!listResponse.ok) throw new Error(`숙소 목록 요청 실패 (${listResponse.status})`);
 
       const list: LodgingListResponse = await listResponse.json();
+      if (signal?.aborted) return;
+
       const details = await Promise.all(
         list.items.map(async (item): Promise<Hotel> => {
           try {
-            const detailResponse = await fetch(
-              `${API_BASE_URL}/api/v1/lodgings/${item.lodgingId}`,
-              { headers: requestHeaders },
-            );
+            const detailResponse = await fetch(`${apiBaseUrl}/api/v1/lodgings/${item.lodgingId}`, {
+              headers: requestHeaders,
+              signal,
+            });
             if (!detailResponse.ok) throw new Error();
             const detail: LodgingDetailResponse = await detailResponse.json();
             return {
@@ -118,24 +132,37 @@ export default function HotelsTabScreen() {
           }
         }),
       );
+
+      if (signal?.aborted) return;
       setHotels(details);
+      setTotalCount(list.totalCount);
     } catch (loadError) {
+      if (signal?.aborted) return;
       setError(loadError instanceof Error ? loadError.message : '숙소 정보를 불러오지 못했습니다.');
     } finally {
-      setLoading(false);
+      if (!signal?.aborted) setLoading(false);
     }
-  }, []);
+  }, [debouncedSearchQuery]);
 
   useEffect(() => {
-    void loadHotels();
+    const timer = setTimeout(() => {
+      setDebouncedSearchQuery(searchQuery.trim());
+    }, 350);
+
+    return () => clearTimeout(timer);
+  }, [searchQuery]);
+
+  useEffect(() => {
+    const controller = new AbortController();
+    void loadHotels(controller.signal);
+
+    return () => controller.abort();
   }, [loadHotels]);
 
   const displayedHotels = useMemo(() => {
     return hotels.filter((hotel) => {
       if (selectedFilter === 1) return hotel.price !== null && hotel.price <= 100000;
-      if (selectedFilter === 2) {
-        return hotel.price !== null && hotel.price > 100000 && hotel.price <= 200000;
-      }
+      if (selectedFilter === 2) return hotel.price !== null && hotel.price > 100000 && hotel.price <= 200000;
       if (selectedFilter === 3) return hotel.price !== null && hotel.price > 200000;
       if (selectedFilter === 4) return hotel.rating !== null && hotel.rating >= 4;
       return true;
@@ -144,7 +171,7 @@ export default function HotelsTabScreen() {
 
   const openNaverDirections = async (hotel: Hotel) => {
     if (hotel.latitude === null || hotel.longitude === null) {
-      Alert.alert('좌표 정보 없음', '이 숙소의 위도와 경도를 백엔드에서 확인해 주세요.');
+      Alert.alert('위치 정보 없음', '이 숙소의 위도와 경도를 확인할 수 없습니다.');
       return;
     }
 
@@ -172,7 +199,7 @@ export default function HotelsTabScreen() {
       try {
         await Linking.openURL(`nmap://route/car?${params}`);
       } catch {
-        Alert.alert('네이버 지도 앱 필요', '길찾기를 이용하려면 네이버 지도 앱을 설치해 주세요.', [
+        Alert.alert('네이버 지도 필요', '길찾기를 사용하려면 네이버 지도 앱을 설치해 주세요.', [
           { text: '취소', style: 'cancel' },
           { text: '설치하기', onPress: () => void Linking.openURL(NAVER_MAP_STORE_URL) },
         ]);
@@ -188,7 +215,6 @@ export default function HotelsTabScreen() {
     <SafeAreaView style={styles.container}>
       <StatusBar barStyle="light-content" backgroundColor={THEME_COLOR} />
 
-      {/* 헤더 */}
       <View style={styles.header}>
         <TouchableOpacity onPress={() => navigation.goBack()} style={styles.backButton}>
           <Ionicons name="arrow-back" size={24} color="#fff" />
@@ -197,41 +223,66 @@ export default function HotelsTabScreen() {
       </View>
 
       <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={styles.scrollContent}>
-        {/* 필터 */}
-        <ScrollView
-          horizontal
-          showsHorizontalScrollIndicator={false}
-          contentContainerStyle={styles.filterRow}
-          style={styles.filterScroll}
-        >
-          {filters.map((filter, index) => (
-            <TouchableOpacity
-              key={filter}
-              onPress={() => setSelectedFilter(index)}
-              style={[
-                styles.filterChip,
-                selectedFilter === index ? styles.filterChipActive : styles.filterChipInactive,
-              ]}
-            >
-              <Text
+        <View style={styles.searchContainer}>
+          <View style={styles.searchBar}>
+            <Ionicons name="search-outline" size={20} color="#9CA3AF" />
+            <TextInput
+              style={styles.searchInput}
+              value={searchQuery}
+              onChangeText={setSearchQuery}
+              placeholder="숙소 이름, 지역 검색"
+              placeholderTextColor="#9CA3AF"
+              returnKeyType="search"
+              onSubmitEditing={() => setDebouncedSearchQuery(searchQuery.trim())}
+              clearButtonMode="while-editing"
+            />
+            {Platform.OS === 'android' && searchQuery.length > 0 && (
+              <TouchableOpacity
+                onPress={() => setSearchQuery('')}
+                accessibilityRole="button"
+                accessibilityLabel="검색어 지우기"
+              >
+                <Ionicons name="close-circle" size={20} color="#9CA3AF" />
+              </TouchableOpacity>
+            )}
+          </View>
+        </View>
+
+        <View style={styles.filterContainer}>
+          <ScrollView
+            horizontal
+            showsHorizontalScrollIndicator={false}
+            contentContainerStyle={styles.filterRow}
+            style={styles.filterScroll}
+          >
+            {filters.map((filter, index) => (
+              <TouchableOpacity
+                key={filter}
+                onPress={() => setSelectedFilter(index)}
                 style={[
-                  styles.filterChipText,
-                  selectedFilter === index
-                    ? styles.filterChipTextActive
-                    : styles.filterChipTextInactive,
+                  styles.filterChip,
+                  selectedFilter === index ? styles.filterChipActive : styles.filterChipInactive,
                 ]}
               >
-                {filter}
-              </Text>
-            </TouchableOpacity>
-          ))}
-        </ScrollView>
+                <Text
+                  style={[
+                    styles.filterChipText,
+                    selectedFilter === index ? styles.filterChipTextActive : styles.filterChipTextInactive,
+                  ]}
+                >
+                  {filter}
+                </Text>
+              </TouchableOpacity>
+            ))}
+          </ScrollView>
+        </View>
 
         <View style={styles.content}>
-          {/* 결과 헤더 */}
           <View style={styles.resultHeader}>
-            <Text style={styles.sectionTitle}>예약 가능한 호텔</Text>
-            <Text style={styles.resultCount}>{displayedHotels.length}개 호텔</Text>
+            <Text style={styles.sectionTitle}>
+              {debouncedSearchQuery ? '검색 결과' : '숙박 가능한 호텔'}
+            </Text>
+            <Text style={styles.resultCount}>{totalCount}개 호텔</Text>
           </View>
 
           {loading && <ActivityIndicator size="large" color={THEME_COLOR} style={styles.loading} />}
@@ -246,7 +297,9 @@ export default function HotelsTabScreen() {
           )}
 
           {!loading && !error && displayedHotels.length === 0 && (
-            <Text style={styles.emptyText}>조건에 맞는 숙소가 없습니다.</Text>
+            <Text style={styles.emptyText}>
+              {searchQuery.trim() ? '검색 결과가 없습니다.' : '조건에 맞는 숙소가 없습니다.'}
+            </Text>
           )}
 
           {displayedHotels.map((hotel) => (
@@ -259,31 +312,30 @@ export default function HotelsTabScreen() {
                 </View>
               )}
               <View style={styles.cardBody}>
-                {/* 이름 + 가격 */}
                 <View style={styles.cardTitleRow}>
                   <Text style={styles.cardTitle}>{hotel.name}</Text>
                   <View style={styles.priceBlock}>
                     <Text style={styles.cardPrice}>
-                      {hotel.price === null ? '가격 문의' : `₩${hotel.price.toLocaleString()}`}
+                      {hotel.price === null ? '가격 문의' : `${hotel.price.toLocaleString()}원`}
                     </Text>
                     <Text style={styles.cardPriceNote}>1박 기준</Text>
                   </View>
                 </View>
 
-                {/* 위치 */}
-                <View style={styles.metaItem}>
-                  <Ionicons name="location-outline" size={14} color="#9CA3AF" />
-                  <Text style={styles.metaText}>{hotel.address ?? hotel.region ?? '주소 정보 없음'}</Text>
+                <View style={styles.locationBlock}>
+                  <View style={styles.metaItem}>
+                    <Ionicons name="location-outline" size={14} color="#9CA3AF" />
+                    <Text style={styles.locationLabel}>지도 위치</Text>
+                  </View>
+                  <Text style={styles.locationText}>{formatLocationText(hotel)}</Text>
                 </View>
 
-                {/* 별점 */}
                 <View style={styles.ratingRow}>
                   <Ionicons name="star" size={14} color="#EAB308" />
                   <Text style={styles.ratingText}>{hotel.rating?.toFixed(1) ?? '-'}</Text>
                   <Text style={styles.reviewText}>({hotel.reviewCount}개 리뷰)</Text>
                 </View>
 
-                {/* 버튼 */}
                 <View style={styles.buttonRow}>
                   <TouchableOpacity
                     style={[
@@ -339,18 +391,52 @@ const styles = StyleSheet.create({
     fontSize: 18,
     fontWeight: '600',
   },
+  searchContainer: {
+    paddingHorizontal: 16,
+    paddingTop: 20,
+  },
+  searchBar: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    backgroundColor: '#fff',
+    borderWidth: 1,
+    borderColor: '#E5E7EB',
+    borderRadius: 14,
+    paddingHorizontal: 14,
+    minHeight: 48,
+  },
+  searchInput: {
+    flex: 1,
+    color: '#1F2933',
+    fontSize: 14,
+    paddingVertical: 0,
+  },
+  filterContainer: {
+    marginTop: 16,
+    height: 40,
+    flexGrow: 0,
+    flexShrink: 0,
+  },
   filterScroll: {
-    marginTop: 20,
+    height: 40,
+    flexGrow: 0,
+    flexShrink: 0,
   },
   filterRow: {
     paddingHorizontal: 16,
     gap: 8,
-    paddingBottom: 4,
+    height: 40,
+    alignItems: 'center',
   },
   filterChip: {
+    height: 36,
     paddingHorizontal: 16,
-    paddingVertical: 8,
     borderRadius: 20,
+    alignItems: 'center',
+    justifyContent: 'center',
+    flexGrow: 0,
+    flexShrink: 0,
   },
   filterChipActive: {
     backgroundColor: THEME_COLOR,
@@ -470,7 +556,21 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: 4,
+    marginBottom: 6,
+  },
+  locationBlock: {
     marginBottom: 10,
+  },
+  locationLabel: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: '#6B7280',
+  },
+  locationText: {
+    fontSize: 13,
+    color: '#374151',
+    lineHeight: 18,
+    paddingLeft: 18,
   },
   metaText: {
     fontSize: 13,

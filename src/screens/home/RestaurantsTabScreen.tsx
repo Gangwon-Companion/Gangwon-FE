@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useState } from 'react';
+﻿import React, { useCallback, useEffect, useState } from 'react';
 import {
   ActivityIndicator,
   Alert,
@@ -17,10 +17,10 @@ import {
 import { useNavigation } from '@react-navigation/native';
 import { Ionicons } from '@expo/vector-icons';
 import * as Location from 'expo-location';
+import { getApiBaseUrl, requestHeaders } from './api';
 
 const THEME_COLOR = '#008A9A';
 const BG_COLOR = '#F7F8FA';
-const API_BASE_URL = process.env.EXPO_PUBLIC_API_URL?.replace(/\/$/, '');
 const APP_IDENTIFIER = 'com.gangwon.gangwonfe';
 const NAVER_MAP_STORE_URL = Platform.select({
   ios: 'https://apps.apple.com/kr/app/id311867728',
@@ -61,7 +61,14 @@ type Restaurant = RestaurantListItem & {
   imageUrl: string | null;
 };
 
-const requestHeaders = { 'ngrok-skip-browser-warning': 'true' };
+const formatLocationText = (restaurant: Restaurant) => {
+  if (restaurant.address && restaurant.region) {
+    if (restaurant.address.includes(restaurant.region)) return restaurant.address;
+    return `${restaurant.address} · ${restaurant.region}`;
+  }
+
+  return restaurant.address ?? restaurant.region ?? '주소 정보 없음';
+};
 
 export default function RestaurantsTabScreen() {
   const navigation = useNavigation();
@@ -75,36 +82,55 @@ export default function RestaurantsTabScreen() {
   const [openingRestaurantId, setOpeningRestaurantId] = useState<number | null>(null);
 
   const loadRestaurants = useCallback(async (signal?: AbortSignal) => {
-    if (!API_BASE_URL) {
-      setError('EXPO_PUBLIC_API_URL이 설정되지 않았습니다.');
-      setLoading(false);
-      return;
-    }
-
     setLoading(true);
     setError(null);
     try {
+      const apiBaseUrl = await getApiBaseUrl(signal);
       const params = new URLSearchParams({ page: '0', size: '50' });
       const keyword = debouncedSearchQuery.trim();
       const menuType = filterMenuTypes[selectedFilter];
       if (keyword) params.set('keyword', keyword);
       if (menuType) params.set('menuType', menuType);
 
-      const listResponse = await fetch(`${API_BASE_URL}/api/v1/restaurants?${params.toString()}`, {
+      const listResponse = await fetch(`${apiBaseUrl}/api/v1/restaurants?${params.toString()}`, {
         headers: requestHeaders,
         signal,
       });
       if (!listResponse.ok) throw new Error(`맛집 목록 요청 실패 (${listResponse.status})`);
 
       const list: RestaurantListResponse = await listResponse.json();
-      const results: Restaurant[] = list.items.map((item) => ({
-        ...item,
-        address: null,
-        latitude: null,
-        longitude: null,
-        reviewCount: null,
-        imageUrl: item.thumbnailUrl,
-      }));
+      if (signal?.aborted) return;
+
+      const results = await Promise.all(
+        list.items.map(async (item): Promise<Restaurant> => {
+          try {
+            const detailResponse = await fetch(
+              `${apiBaseUrl}/api/v1/restaurants/${item.restaurantId}`,
+              { headers: requestHeaders, signal },
+            );
+            if (!detailResponse.ok) throw new Error();
+            const detail: RestaurantDetailResponse = await detailResponse.json();
+            return {
+              ...item,
+              address: detail.address,
+              latitude: detail.latitude,
+              longitude: detail.longitude,
+              reviewCount: detail.reviews.length,
+              imageUrl: item.thumbnailUrl ?? detail.photos[0] ?? null,
+            };
+          } catch {
+            return {
+              ...item,
+              address: null,
+              latitude: null,
+              longitude: null,
+              reviewCount: null,
+              imageUrl: item.thumbnailUrl,
+            };
+          }
+        }),
+      );
+
       if (signal?.aborted) return;
       setRestaurants(results);
       setTotalCount(list.totalCount);
@@ -136,9 +162,9 @@ export default function RestaurantsTabScreen() {
     try {
       let destination = restaurant;
       if (destination.latitude === null || destination.longitude === null) {
-        if (!API_BASE_URL) throw new Error('API URL is not configured');
+        const apiBaseUrl = await getApiBaseUrl();
         const detailResponse = await fetch(
-          `${API_BASE_URL}/api/v1/restaurants/${restaurant.restaurantId}`,
+          `${apiBaseUrl}/api/v1/restaurants/${restaurant.restaurantId}`,
           { headers: requestHeaders },
         );
         if (!detailResponse.ok) throw new Error(`맛집 상세 요청 실패 (${detailResponse.status})`);
@@ -201,7 +227,6 @@ export default function RestaurantsTabScreen() {
     <SafeAreaView style={styles.container}>
       <StatusBar barStyle="light-content" backgroundColor={THEME_COLOR} />
 
-      {/* 헤더 */}
       <View style={styles.header}>
         <TouchableOpacity onPress={() => navigation.goBack()} style={styles.backButton}>
           <Ionicons name="arrow-back" size={24} color="#fff" />
@@ -235,7 +260,6 @@ export default function RestaurantsTabScreen() {
           </View>
         </View>
 
-        {/* 카테고리 필터 */}
         <View style={styles.filterContainer}>
           <ScrollView
             horizontal
@@ -268,7 +292,6 @@ export default function RestaurantsTabScreen() {
         </View>
 
         <View style={styles.content}>
-          {/* 결과 헤더 */}
           <View style={styles.resultHeader}>
             <Text style={styles.sectionTitle}>
               {debouncedSearchQuery ? '검색 결과' : '인기 맛집'}
@@ -303,7 +326,6 @@ export default function RestaurantsTabScreen() {
                 </View>
               )}
               <View style={styles.cardBody}>
-                {/* 이름 + 가격대 */}
                 <View style={styles.cardTitleRow}>
                   <View style={styles.titleBlock}>
                     <Text style={styles.cardTitle}>{restaurant.name}</Text>
@@ -311,15 +333,14 @@ export default function RestaurantsTabScreen() {
                   </View>
                 </View>
 
-                {/* 위치 */}
-                <View style={styles.metaItem}>
-                  <Ionicons name="location-outline" size={14} color="#9CA3AF" />
-                  <Text style={styles.metaText}>
-                    {restaurant.address ?? restaurant.region ?? '주소 정보 없음'}
-                  </Text>
+                <View style={styles.locationBlock}>
+                  <View style={styles.metaItem}>
+                    <Ionicons name="location-outline" size={14} color="#9CA3AF" />
+                    <Text style={styles.locationLabel}>주소</Text>
+                  </View>
+                  <Text style={styles.locationText}>{formatLocationText(restaurant)}</Text>
                 </View>
 
-                {/* 별점 */}
                 <View style={styles.ratingRow}>
                   <Ionicons name="star" size={14} color="#EAB308" />
                   <Text style={styles.ratingText}>{restaurant.rating?.toFixed(1) ?? '-'}</Text>
@@ -328,7 +349,6 @@ export default function RestaurantsTabScreen() {
                   )}
                 </View>
 
-                {/* 버튼 */}
                 <View style={styles.buttonRow}>
                   <TouchableOpacity
                     style={[
@@ -499,18 +519,18 @@ const styles = StyleSheet.create({
   },
   card: {
     backgroundColor: '#fff',
-    borderRadius: 16,
+    borderRadius: 20,
     overflow: 'hidden',
     marginBottom: 16,
     shadowColor: '#000',
-    shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.07,
-    shadowRadius: 4,
-    elevation: 2,
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.08,
+    shadowRadius: 10,
+    elevation: 3,
   },
   cardImage: {
     width: '100%',
-    height: 192,
+    height: 210,
   },
   imagePlaceholder: {
     alignItems: 'center',
@@ -524,36 +544,41 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'flex-start',
-    marginBottom: 8,
+    marginBottom: 10,
   },
   titleBlock: {
     flex: 1,
     marginRight: 8,
   },
   cardTitle: {
-    fontSize: 15,
-    fontWeight: '600',
-    color: '#1F2933',
-    marginBottom: 2,
+    fontSize: 18,
+    fontWeight: '700',
+    color: '#111827',
+    marginBottom: 4,
   },
   cuisineText: {
     fontSize: 13,
-    color: '#9CA3AF',
+    color: '#6B7280',
   },
-  priceRange: {
-    fontSize: 16,
-    fontWeight: '600',
-    color: THEME_COLOR,
+  locationBlock: {
+    marginBottom: 10,
   },
   metaItem: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 4,
-    marginBottom: 10,
+    marginBottom: 6,
   },
-  metaText: {
+  locationLabel: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: '#6B7280',
+  },
+  locationText: {
     fontSize: 13,
-    color: '#9CA3AF',
+    color: '#374151',
+    lineHeight: 18,
+    paddingLeft: 18,
   },
   ratingRow: {
     flexDirection: 'row',
@@ -584,7 +609,7 @@ const styles = StyleSheet.create({
   primaryButtonText: {
     color: '#fff',
     fontSize: 14,
-    fontWeight: '500',
+    fontWeight: '600',
   },
   secondaryButton: {
     flex: 1,
@@ -599,6 +624,7 @@ const styles = StyleSheet.create({
   secondaryButtonText: {
     color: '#6B7280',
     fontSize: 14,
+    fontWeight: '500',
   },
   buttonDisabled: {
     opacity: 0.6,
