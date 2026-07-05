@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useCallback, useEffect, useState } from 'react';
 import {
   View,
   Text,
@@ -8,90 +8,131 @@ import {
   Image,
   StyleSheet,
   StatusBar,
+  ActivityIndicator,
+  Linking,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { useNavigation } from '@react-navigation/native';
-import type { CompositeNavigationProp } from '@react-navigation/native';
-import type { BottomTabNavigationProp } from '@react-navigation/bottom-tabs';
-import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
-import type { TabParamList } from '../../navigation/TabNavigator';
-import type { RootStackParamList } from '../../navigation/types';
+import { useBottomTabBarHeight } from '@react-navigation/bottom-tabs';
+import { getApiBaseUrl, requestHeaders } from './api';
 
-// ─── 색상 상수 ───────────────────────────────────────────────
+type PopularPeriod = 'today' | 'week' | 'month';
+
+type HotplaceItem = {
+  hotplaceId: number;
+  displayName: string;
+  areaName: string | null;
+  signguName: string | null;
+  congestionRate: number | null;
+  baseDate: string | null;
+};
+
+type HotplaceListResponse = {
+  totalCount: number;
+  items: HotplaceItem[];
+};
+
 const COLORS = {
   primary: '#008A9A',
   primaryLight: '#BFE8E2',
-  primaryGradientEnd: '#00A5B8',
   bg: '#F7F8FA',
   white: '#FFFFFF',
   text: '#1F2933',
-  textMuted: '#9CA3AF',
   textSub: '#6B7280',
+  textMuted: '#9CA3AF',
   border: '#E5E7EB',
   red: '#EF4444',
 };
 
-// ─── 더미 데이터 ──────────────────────────────────────────────
-const TABS = [
+const TAB_ITEMS = [
   { label: '테마', route: 'ThemeTab' },
-  { label: '호텔', route: 'HotelsTab' },
+  { label: '숙소', route: 'HotelsTab' },
   { label: '맛집', route: 'RestaurantsTab' },
 ] as const;
 
-type HomeNavigationProp = CompositeNavigationProp<
-  BottomTabNavigationProp<TabParamList, '홈'>,
-  NativeStackNavigationProp<RootStackParamList>
->;
-
-const POPULAR_PLACES = [
-  {
-    image: 'https://images.unsplash.com/photo-1504681869696-d977211a5f4c?w=400&h=300&fit=crop',
-    title: '몰디브 천국',
-    location: '몰디브',
-    rating: '4.9',
-  },
-  {
-    image: 'https://images.unsplash.com/photo-1600582910964-5b7c109e6868?w=400&h=300&fit=crop',
-    title: '발리 비치 리조트',
-    location: '인도네시아',
-    rating: '4.8',
-  },
+const PERIOD_OPTIONS: Array<{ key: PopularPeriod; label: string }> = [
+  { key: 'today', label: '오늘' },
+  { key: 'week', label: '일주일' },
+  { key: 'month', label: '한달' },
 ];
 
 const DEALS = [
   {
     image: 'https://images.unsplash.com/photo-1631049552057-403cdb8f0658?w=300&h=200&fit=crop',
-    title: '럭셔리 호텔',
+    title: '숙박 특가',
     discount: '30% 할인',
   },
   {
     image: 'https://images.unsplash.com/photo-1663530761401-15eefb544889?w=300&h=200&fit=crop',
-    title: '파인 다이닝',
+    title: '맛집 이벤트',
     discount: '20% 할인',
   },
 ];
 
-// ─── 메인 컴포넌트 ────────────────────────────────────────────
 export default function HomeScreen() {
-  const navigation = useNavigation<HomeNavigationProp>();
+  const navigation = useNavigation<any>();
+  const tabBarHeight = useBottomTabBarHeight();
   const [activeTab, setActiveTab] = useState(0);
   const [searchText, setSearchText] = useState('');
+  const [popularPeriod, setPopularPeriod] = useState<PopularPeriod>('today');
+  const [popularPlaces, setPopularPlaces] = useState<HotplaceItem[]>([]);
+  const [popularLoading, setPopularLoading] = useState(true);
+  const [popularError, setPopularError] = useState<string | null>(null);
+
+  const openNaverMap = useCallback(async (place: HotplaceItem) => {
+    const query = [place.displayName, place.areaName].filter(Boolean).join(' ');
+    const url = `https://map.naver.com/v5/search/${encodeURIComponent(query)}`;
+
+    try {
+      await Linking.openURL(url);
+    } catch (error) {
+      console.warn('네이버 지도를 열지 못했습니다.', error);
+    }
+  }, []);
+
+  const loadPopularPlaces = useCallback(async (period: PopularPeriod, signal?: AbortSignal) => {
+    setPopularLoading(true);
+    setPopularError(null);
+
+    try {
+      const apiBaseUrl = await getApiBaseUrl(signal);
+      const response = await fetch(`${apiBaseUrl}/api/v1/promotions/hotplace?period=${period}`, {
+        headers: requestHeaders,
+        signal,
+      });
+      if (!response.ok) throw new Error(`인기 여행지 요청 실패 (${response.status})`);
+
+      const data: HotplaceListResponse = await response.json();
+      if (signal?.aborted) return;
+      setPopularPlaces(data.items);
+    } catch (loadError) {
+      if (signal?.aborted) return;
+      setPopularError(loadError instanceof Error ? loadError.message : '인기 여행지를 불러오지 못했습니다.');
+    } finally {
+      if (!signal?.aborted) setPopularLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    const controller = new AbortController();
+    void loadPopularPlaces(popularPeriod, controller.signal);
+
+    return () => controller.abort();
+  }, [popularPeriod, loadPopularPlaces]);
 
   return (
-    <SafeAreaView style={styles.safeArea}>
+    <SafeAreaView style={styles.safeArea} edges={['top']}>
       <StatusBar barStyle="light-content" backgroundColor={COLORS.primary} />
       <ScrollView
         style={styles.scroll}
         showsVerticalScrollIndicator={false}
-        contentContainerStyle={styles.scrollContent}
+        contentContainerStyle={[styles.scrollContent, { paddingBottom: tabBarHeight + 24 }]}
       >
-        {/* ── 헤더 영역 ── */}
         <View style={styles.header}>
-          {/* 인사말 + 프로필 */}
           <View style={styles.headerTop}>
             <View>
-              <Text style={styles.greeting}>안녕하세요, 철수님</Text>
+              <Text style={styles.greeting}>안녕하세요, 여행자님</Text>
               <Text style={styles.headerTitle}>어디로 떠나볼까요?</Text>
             </View>
             <View style={styles.profileArea}>
@@ -106,12 +147,11 @@ export default function HomeScreen() {
             </View>
           </View>
 
-          {/* 검색바 */}
           <View style={styles.searchBar}>
             <Ionicons name="search-outline" size={20} color={COLORS.textMuted} style={styles.searchIcon} />
             <TextInput
               style={styles.searchInput}
-              placeholder="여행지, 호텔을 검색하세요..."
+              placeholder="여행지, 숙소를 검색하세요..."
               placeholderTextColor={COLORS.textMuted}
               value={searchText}
               onChangeText={setSearchText}
@@ -119,17 +159,14 @@ export default function HomeScreen() {
           </View>
         </View>
 
-        {/* ── 콘텐츠 영역 ── */}
         <View style={styles.content}>
-
-          {/* 탭 필터 */}
           <ScrollView
             horizontal
             showsHorizontalScrollIndicator={false}
             style={styles.tabScroll}
             contentContainerStyle={styles.tabContent}
           >
-            {TABS.map((tab, index) => (
+            {TAB_ITEMS.map((tab, index) => (
               <TouchableOpacity
                 key={tab.route}
                 onPress={() => {
@@ -145,7 +182,6 @@ export default function HomeScreen() {
             ))}
           </ScrollView>
 
-          {/* 다가오는 여행 카드 */}
           <View style={styles.card}>
             <View style={styles.upcomingHeader}>
               <View style={styles.calendarIcon}>
@@ -153,7 +189,7 @@ export default function HomeScreen() {
               </View>
               <View style={{ flex: 1 }}>
                 <Text style={styles.cardTitle}>다가오는 여행</Text>
-                <Text style={styles.cardSub}>제주도</Text>
+                <Text style={styles.cardSub}>이번 주</Text>
               </View>
             </View>
             <Text style={styles.dateText}>2026년 6월 15일 - 6월 18일</Text>
@@ -167,32 +203,73 @@ export default function HomeScreen() {
             </View>
           </View>
 
-          {/* 프로모션 배너 */}
           <View style={styles.promoBanner}>
             <Text style={styles.promoTitle}>강원도 여행</Text>
-            <Text style={styles.promoSub}>특별 여름 패키지</Text>
+            <Text style={styles.promoSub}>인기 숙소 패키지</Text>
             <TouchableOpacity style={styles.promoBtnWrap}>
-              <Text style={styles.promoBtn}>둘러보기</Text>
+              <Text style={styles.promoBtn}>살펴보기</Text>
             </TouchableOpacity>
           </View>
 
-          {/* 오늘의 인기 여행지 */}
-          <Text style={styles.sectionTitle}>오늘의 인기 여행지</Text>
-          {POPULAR_PLACES.map((place, index) => (
-            <View key={index} style={styles.placeCard}>
-              <Image source={{ uri: place.image }} style={styles.placeImage} />
+          <View style={styles.sectionHeader}>
+            <Text style={styles.sectionTitle}>인기 여행지</Text>
+            <View style={styles.periodSelector}>
+              {PERIOD_OPTIONS.map((option) => {
+                const isActive = popularPeriod === option.key;
+
+                return (
+                  <TouchableOpacity
+                    key={option.key}
+                    onPress={() => setPopularPeriod(option.key)}
+                    style={[styles.periodChip, isActive && styles.periodChipActive]}
+                  >
+                    <Text style={[styles.periodChipText, isActive && styles.periodChipTextActive]}>
+                      {option.label}
+                    </Text>
+                  </TouchableOpacity>
+                );
+              })}
+            </View>
+          </View>
+
+          {popularLoading && <ActivityIndicator size="large" color={COLORS.primary} style={styles.popularLoading} />}
+
+          {!popularLoading && popularError && (
+            <View style={styles.popularMessageBox}>
+              <Text style={styles.popularErrorText}>{popularError}</Text>
+              <TouchableOpacity
+                style={styles.popularRetryButton}
+                onPress={() => void loadPopularPlaces(popularPeriod)}
+              >
+                <Text style={styles.popularRetryButtonText}>다시 시도</Text>
+              </TouchableOpacity>
+            </View>
+          )}
+
+          {!popularLoading && !popularError && popularPlaces.length === 0 && (
+            <Text style={styles.popularEmptyText}>표시할 인기 여행지가 없습니다.</Text>
+          )}
+
+          {!popularLoading && !popularError && popularPlaces.map((place) => (
+            <TouchableOpacity
+              key={place.hotplaceId}
+              activeOpacity={0.85}
+              onPress={() => void openNaverMap(place)}
+              style={styles.placeCard}
+            >
+              <View style={[styles.placeImage, styles.placeImagePlaceholder]}>
+                <Ionicons name="map-outline" size={36} color={COLORS.textMuted} />
+              </View>
               <View style={styles.placeInfo}>
-                <Text style={styles.placeTitle}>{place.title}</Text>
+                <Text style={styles.placeTitle}>{place.displayName}</Text>
                 <View style={styles.placeRow}>
-                  <Text style={styles.placeLocation}>{place.location}</Text>
-                  <Text style={styles.placeRating}>★ {place.rating}</Text>
+                  <Text style={styles.placeLocation}>{place.areaName}</Text>
                 </View>
               </View>
-            </View>
+            </TouchableOpacity>
           ))}
 
-          {/* 특가 프로모션 */}
-          <Text style={styles.sectionTitle}>특가 프로모션</Text>
+          <Text style={styles.sectionTitle}>할인 프로모션</Text>
           <View style={styles.dealGrid}>
             {DEALS.map((deal, index) => (
               <View key={index} style={styles.dealCard}>
@@ -208,28 +285,24 @@ export default function HomeScreen() {
               </View>
             ))}
           </View>
-
         </View>
       </ScrollView>
     </SafeAreaView>
   );
 }
 
-// ─── 스타일 ────────────────────────────────────────────────────
 const styles = StyleSheet.create({
   safeArea: {
     flex: 1,
-    backgroundColor: COLORS.primary,
+    backgroundColor: COLORS.bg,
   },
   scroll: {
     flex: 1,
     backgroundColor: COLORS.bg,
   },
   scrollContent: {
-    paddingBottom: 100, // 하단 탭바 여백
+    paddingBottom: 24,
   },
-
-  // 헤더
   header: {
     backgroundColor: COLORS.primary,
     borderBottomLeftRadius: 32,
@@ -277,8 +350,6 @@ const styles = StyleSheet.create({
     borderRadius: 24,
     backgroundColor: COLORS.white,
   },
-
-  // 검색바
   searchBar: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -296,14 +367,10 @@ const styles = StyleSheet.create({
     color: COLORS.text,
     padding: 0,
   },
-
-  // 콘텐츠
   content: {
     paddingHorizontal: 24,
     paddingTop: 24,
   },
-
-  // 탭
   tabScroll: {
     marginBottom: 20,
   },
@@ -327,8 +394,6 @@ const styles = StyleSheet.create({
   tabTextActive: {
     color: COLORS.white,
   },
-
-  // 카드 공통
   card: {
     backgroundColor: COLORS.white,
     borderRadius: 16,
@@ -340,8 +405,6 @@ const styles = StyleSheet.create({
     shadowRadius: 4,
     elevation: 2,
   },
-
-  // 다가오는 여행
   upcomingHeader: {
     flexDirection: 'row',
     alignItems: 'flex-start',
@@ -399,16 +462,6 @@ const styles = StyleSheet.create({
     fontSize: 14,
     fontWeight: '500',
   },
-
-  // 섹션 타이틀
-  sectionTitle: {
-    fontSize: 17,
-    fontWeight: '600',
-    color: COLORS.text,
-    marginBottom: 16,
-  },
-
-  // 프로모션 배너
   promoBanner: {
     backgroundColor: COLORS.primary,
     borderRadius: 16,
@@ -438,8 +491,45 @@ const styles = StyleSheet.create({
     fontSize: 14,
     fontWeight: '500',
   },
-
-  // 인기 여행지
+  sectionHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    gap: 12,
+    marginBottom: 16,
+  },
+  sectionTitle: {
+    flexShrink: 1,
+    fontSize: 17,
+    fontWeight: '600',
+    color: COLORS.text,
+    marginBottom: 16,
+  },
+  periodSelector: {
+    flexDirection: 'row',
+    gap: 8,
+    flexShrink: 1,
+  },
+  periodChip: {
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderRadius: 999,
+    backgroundColor: COLORS.white,
+    borderWidth: 1,
+    borderColor: COLORS.border,
+  },
+  periodChipActive: {
+    backgroundColor: COLORS.primary,
+    borderColor: COLORS.primary,
+  },
+  periodChipText: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: COLORS.textSub,
+  },
+  periodChipTextActive: {
+    color: COLORS.white,
+  },
   placeCard: {
     backgroundColor: COLORS.white,
     borderRadius: 16,
@@ -454,6 +544,41 @@ const styles = StyleSheet.create({
   placeImage: {
     width: '100%',
     height: 160,
+  },
+  placeImagePlaceholder: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: COLORS.bg,
+  },
+  popularLoading: {
+    marginVertical: 24,
+  },
+  popularMessageBox: {
+    alignItems: 'center',
+    paddingVertical: 32,
+    gap: 12,
+  },
+  popularErrorText: {
+    color: COLORS.red,
+    fontSize: 14,
+    textAlign: 'center',
+  },
+  popularRetryButton: {
+    backgroundColor: COLORS.primary,
+    borderRadius: 10,
+    paddingHorizontal: 20,
+    paddingVertical: 10,
+  },
+  popularRetryButtonText: {
+    color: COLORS.white,
+    fontSize: 14,
+    fontWeight: '600',
+  },
+  popularEmptyText: {
+    color: COLORS.textMuted,
+    fontSize: 14,
+    textAlign: 'center',
+    paddingVertical: 24,
   },
   placeInfo: {
     padding: 16,
@@ -478,8 +603,6 @@ const styles = StyleSheet.create({
     color: COLORS.primary,
     fontWeight: '500',
   },
-
-  // 특가 딜
   dealGrid: {
     flexDirection: 'row',
     gap: 12,
@@ -518,8 +641,8 @@ const styles = StyleSheet.create({
     padding: 12,
   },
   dealTitle: {
-    fontSize: 13,
-    fontWeight: '500',
+    fontSize: 14,
+    fontWeight: '600',
     color: COLORS.text,
   },
 });

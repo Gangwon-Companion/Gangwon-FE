@@ -3,6 +3,7 @@ import { createNativeStackNavigator } from '@react-navigation/native-stack';
 
 import OnboardingScreen from '../screens/auth/OnboardingScreen';
 import LoginScreen from '../screens/auth/LoginScreen';
+import EmailLoginScreen from '../screens/auth/EmailLoginScreen';
 import SignUpScreen from '../screens/auth/SignUpScreen';
 import TabNavigator from './TabNavigator';
 import ThemeTabScreen from '../screens/home/ThemeTabScreen';
@@ -21,6 +22,7 @@ export default function RootNavigator() {
     >
       <Stack.Screen name="Onboarding" component={OnboardingScreen} />
       <Stack.Screen name="Login" component={LoginScreen} />
+      <Stack.Screen name="EmailLogin" component={EmailLoginScreen} />
       <Stack.Screen name="SignUp" component={SignUpScreen} />
       <Stack.Screen name="Main" component={TabNavigator} />
       <Stack.Screen name="ThemeTab" component={ThemeTabScreen} />
