@@ -92,7 +92,7 @@ export default function LoginScreen({ navigation }: Props) {
                 <View style={styles.emailIcon}>
                   <Mail size={19} color={colors.primary} />
                 </View>
-                <Text style={styles.emailButtonText}>이메일로 로그인</Text>
+                <Text style={styles.emailButtonText}>아이디로 로그인</Text>
               </View>
             </Pressable>
           </View>
