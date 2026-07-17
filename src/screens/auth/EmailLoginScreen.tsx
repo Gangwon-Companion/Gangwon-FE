@@ -1,6 +1,8 @@
 import { useState } from 'react';
 import { CommonActions } from '@react-navigation/native';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import {
+  ActivityIndicator,
   Alert,
   KeyboardAvoidingView,
   Platform,
@@ -15,26 +17,54 @@ import { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { ArrowLeft, Check, Eye, EyeOff } from 'lucide-react-native';
 import { colors } from '../../constants/colors';
 import { RootStackParamList } from '../../navigation/types';
+import { login } from './api';
 
 type Props = NativeStackScreenProps<RootStackParamList, 'EmailLogin'>;
 
 export default function EmailLoginScreen({ navigation }: Props) {
-  const [email, setEmail] = useState('');
+  const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
   const [autoLogin, setAutoLogin] = useState(false);
+  const [submitting, setSubmitting] = useState(false);
+  const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
-  const submitLogin = () => {
-    if (!email.trim() || !password) {
-      Alert.alert('입력 확인', '이메일과 비밀번호를 입력해 주세요.');
+  const submitLogin = async () => {
+    const trimmedUsername = username.trim();
+    setErrorMessage(null);
+
+    if (!trimmedUsername) {
+      const message = '아이디를 입력해주세요.';
+      setErrorMessage(message);
+      Alert.alert('입력 확인', message);
       return;
     }
-    navigation.dispatch(
-      CommonActions.reset({
-        index: 0,
-        routes: [{ name: 'Main' }],
-      }),
-    );
+
+    if (!password) {
+      const message = '비밀번호를 입력해주세요.';
+      setErrorMessage(message);
+      Alert.alert('입력 확인', message);
+      return;
+    }
+
+    setSubmitting(true);
+
+    try {
+      const token = await login(trimmedUsername, password);
+      await AsyncStorage.setItem('accessToken', token);
+      navigation.dispatch(
+        CommonActions.reset({
+          index: 0,
+          routes: [{ name: 'Main' }],
+        }),
+      );
+    } catch (error) {
+      const message = error instanceof Error ? error.message : '로그인 중 문제가 발생했습니다.';
+      setErrorMessage(message);
+      Alert.alert('로그인 실패', message);
+    } finally {
+      setSubmitting(false);
+    }
   };
 
   return (
@@ -53,26 +83,27 @@ export default function EmailLoginScreen({ navigation }: Props) {
             accessibilityLabel="뒤로 가기"
             style={styles.backButton}
             onPress={() => navigation.goBack()}
+            disabled={submitting}
           >
             <ArrowLeft size={24} color={colors.gray500} />
           </Pressable>
 
-          <Text style={styles.title}>이메일로 로그인</Text>
+          <Text style={styles.title}>아이디로 로그인</Text>
 
           <View style={styles.form}>
             <View>
-              <Text style={styles.label}>이메일</Text>
+              <Text style={styles.label}>아이디</Text>
               <TextInput
-                accessibilityLabel="이메일"
+                accessibilityLabel="아이디"
                 style={styles.input}
-                placeholder="이메일을 입력하세요"
+                placeholder="아이디를 입력하세요"
                 placeholderTextColor={colors.gray400}
-                value={email}
-                onChangeText={setEmail}
+                value={username}
+                onChangeText={setUsername}
                 autoCapitalize="none"
                 autoCorrect={false}
-                keyboardType="email-address"
-                textContentType="emailAddress"
+                textContentType="username"
+                editable={!submitting}
               />
             </View>
 
@@ -89,12 +120,14 @@ export default function EmailLoginScreen({ navigation }: Props) {
                   secureTextEntry={!showPassword}
                   textContentType="password"
                   onSubmitEditing={submitLogin}
+                  editable={!submitting}
                 />
                 <Pressable
                   accessibilityRole="button"
                   accessibilityLabel={showPassword ? '비밀번호 숨기기' : '비밀번호 보기'}
                   hitSlop={10}
                   onPress={() => setShowPassword((prev) => !prev)}
+                  disabled={submitting}
                 >
                   {showPassword ? (
                     <EyeOff size={20} color={colors.gray400} />
@@ -108,6 +141,7 @@ export default function EmailLoginScreen({ navigation }: Props) {
             <Pressable
               style={styles.checkboxRow}
               onPress={() => setAutoLogin((prev) => !prev)}
+              disabled={submitting}
             >
               <View style={[styles.checkbox, autoLogin && styles.checkboxChecked]}>
                 {autoLogin && <Check size={14} color={colors.white} strokeWidth={3} />}
@@ -115,12 +149,23 @@ export default function EmailLoginScreen({ navigation }: Props) {
               <Text style={styles.checkboxText}>자동 로그인</Text>
             </Pressable>
 
+            {errorMessage && <Text style={styles.errorText}>{errorMessage}</Text>}
+
             <Pressable
               accessibilityRole="button"
-              style={({ pressed }) => [styles.primaryButton, pressed && styles.buttonPressed]}
+              style={({ pressed }) => [
+                styles.primaryButton,
+                pressed && styles.buttonPressed,
+                submitting && styles.buttonDisabled,
+              ]}
               onPress={submitLogin}
+              disabled={submitting}
             >
-              <Text style={styles.primaryButtonText}>로그인</Text>
+              {submitting ? (
+                <ActivityIndicator size="small" color={colors.white} />
+              ) : (
+                <Text style={styles.primaryButtonText}>로그인</Text>
+              )}
             </Pressable>
           </View>
         </View>
@@ -218,6 +263,11 @@ const styles = StyleSheet.create({
     fontSize: 14,
     color: colors.gray500,
   },
+  errorText: {
+    color: '#EF4444',
+    fontSize: 13,
+    lineHeight: 18,
+  },
   primaryButton: {
     height: 54,
     borderRadius: 16,
@@ -233,5 +283,8 @@ const styles = StyleSheet.create({
   },
   buttonPressed: {
     opacity: 0.82,
+  },
+  buttonDisabled: {
+    opacity: 0.7,
   },
 });

@@ -7,6 +7,8 @@ import EmailLoginScreen from '../screens/auth/EmailLoginScreen';
 import SignUpScreen from '../screens/auth/SignUpScreen';
 import TabNavigator from './TabNavigator';
 import ThemeTabScreen from '../screens/home/ThemeTabScreen';
+import ThemeDestinationListScreen from '../screens/home/ThemeDestinationListScreen';
+import DestinationDetailScreen from '../screens/home/DestinationDetailScreen';
 import HotelsTabScreen from '../screens/home/HotelsTabScreen';
 import RestaurantsTabScreen from '../screens/home/RestaurantsTabScreen';
 import HotelNavigationScreen from '../screens/travel/HotelNavigationScreen';
@@ -26,6 +28,8 @@ export default function RootNavigator() {
       <Stack.Screen name="SignUp" component={SignUpScreen} />
       <Stack.Screen name="Main" component={TabNavigator} />
       <Stack.Screen name="ThemeTab" component={ThemeTabScreen} />
+      <Stack.Screen name="ThemeDestinations" component={ThemeDestinationListScreen} />
+      <Stack.Screen name="DestinationDetail" component={DestinationDetailScreen} />
       <Stack.Screen name="HotelsTab" component={HotelsTabScreen} />
       <Stack.Screen name="RestaurantsTab" component={RestaurantsTabScreen} />
       <Stack.Screen name="HotelNavigation" component={HotelNavigationScreen} />

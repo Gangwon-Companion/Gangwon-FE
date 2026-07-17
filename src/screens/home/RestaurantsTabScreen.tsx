@@ -17,7 +17,7 @@ import {
 import { useNavigation } from '@react-navigation/native';
 import { Ionicons } from '@expo/vector-icons';
 import * as Location from 'expo-location';
-import { getApiBaseUrl, requestHeaders } from './api';
+import { buildRequestHeaders, getApiBaseUrl } from './api';
 
 const THEME_COLOR = '#008A9A';
 const BG_COLOR = '#F7F8FA';
@@ -93,7 +93,7 @@ export default function RestaurantsTabScreen() {
       if (menuType) params.set('menuType', menuType);
 
       const listResponse = await fetch(`${apiBaseUrl}/api/v1/restaurants?${params.toString()}`, {
-        headers: requestHeaders,
+        headers: await buildRequestHeaders(),
         signal,
       });
       if (!listResponse.ok) throw new Error(`맛집 목록 요청 실패 (${listResponse.status})`);
@@ -106,7 +106,7 @@ export default function RestaurantsTabScreen() {
           try {
             const detailResponse = await fetch(
               `${apiBaseUrl}/api/v1/restaurants/${item.restaurantId}`,
-              { headers: requestHeaders, signal },
+              { headers: await buildRequestHeaders(), signal },
             );
             if (!detailResponse.ok) throw new Error();
             const detail: RestaurantDetailResponse = await detailResponse.json();
@@ -165,7 +165,7 @@ export default function RestaurantsTabScreen() {
         const apiBaseUrl = await getApiBaseUrl();
         const detailResponse = await fetch(
           `${apiBaseUrl}/api/v1/restaurants/${restaurant.restaurantId}`,
-          { headers: requestHeaders },
+          { headers: await buildRequestHeaders() },
         );
         if (!detailResponse.ok) throw new Error(`맛집 상세 요청 실패 (${detailResponse.status})`);
         const detail: RestaurantDetailResponse = await detailResponse.json();

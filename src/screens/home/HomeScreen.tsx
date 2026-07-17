@@ -15,7 +15,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { useNavigation } from '@react-navigation/native';
 import { useBottomTabBarHeight } from '@react-navigation/bottom-tabs';
-import { getApiBaseUrl, requestHeaders } from './api';
+import { buildRequestHeaders, getApiBaseUrl } from './api';
 
 type PopularPeriod = 'today' | 'week' | 'month';
 
@@ -98,7 +98,7 @@ export default function HomeScreen() {
     try {
       const apiBaseUrl = await getApiBaseUrl(signal);
       const response = await fetch(`${apiBaseUrl}/api/v1/promotions/hotplace?period=${period}`, {
-        headers: requestHeaders,
+        headers: await buildRequestHeaders(),
         signal,
       });
       if (!response.ok) throw new Error(`인기 여행지 요청 실패 (${response.status})`);
