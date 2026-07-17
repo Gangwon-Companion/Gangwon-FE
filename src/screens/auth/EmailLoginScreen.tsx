@@ -1,6 +1,5 @@
 import { useState } from 'react';
 import { CommonActions } from '@react-navigation/native';
-import AsyncStorage from '@react-native-async-storage/async-storage';
 import {
   ActivityIndicator,
   Alert,
@@ -14,10 +13,11 @@ import {
   View,
 } from 'react-native';
 import { NativeStackScreenProps } from '@react-navigation/native-stack';
-import { ArrowLeft, Check, Eye, EyeOff } from 'lucide-react-native';
+import { ArrowLeft, Eye, EyeOff } from 'lucide-react-native';
 import { colors } from '../../constants/colors';
 import { RootStackParamList } from '../../navigation/types';
-import { login } from './api';
+import { parseApiError, saveAccessToken } from '../../api/auth';
+import { getApiBaseUrl, requestHeaders } from '../home/api';
 
 type Props = NativeStackScreenProps<RootStackParamList, 'EmailLogin'>;
 
@@ -25,33 +25,34 @@ export default function EmailLoginScreen({ navigation }: Props) {
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
-  const [autoLogin, setAutoLogin] = useState(false);
   const [submitting, setSubmitting] = useState(false);
-  const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
   const submitLogin = async () => {
     const trimmedUsername = username.trim();
-    setErrorMessage(null);
-
-    if (!trimmedUsername) {
-      const message = '아이디를 입력해주세요.';
-      setErrorMessage(message);
-      Alert.alert('입력 확인', message);
-      return;
-    }
-
-    if (!password) {
-      const message = '비밀번호를 입력해주세요.';
-      setErrorMessage(message);
-      Alert.alert('입력 확인', message);
+    if (!trimmedUsername || !password) {
+      Alert.alert('입력 확인', '아이디와 비밀번호를 입력해 주세요.');
       return;
     }
 
     setSubmitting(true);
-
     try {
-      const token = await login(trimmedUsername, password);
-      await AsyncStorage.setItem('accessToken', token);
+      const apiBaseUrl = await getApiBaseUrl();
+      const response = await fetch(`${apiBaseUrl}/api/v1/auth/login`, {
+        method: 'POST',
+        headers: {
+          ...requestHeaders,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ username: trimmedUsername, password }),
+      });
+
+      if (!response.ok) throw await parseApiError(response);
+      const data: { token?: unknown } = await response.json();
+      if (typeof data.token !== 'string' || !data.token) {
+        throw new Error('로그인 응답에 토큰이 없습니다.');
+      }
+
+      await saveAccessToken(data.token);
       navigation.dispatch(
         CommonActions.reset({
           index: 0,
@@ -59,9 +60,10 @@ export default function EmailLoginScreen({ navigation }: Props) {
         }),
       );
     } catch (error) {
-      const message = error instanceof Error ? error.message : '로그인 중 문제가 발생했습니다.';
-      setErrorMessage(message);
-      Alert.alert('로그인 실패', message);
+      Alert.alert(
+        '로그인 실패',
+        error instanceof Error ? error.message : '로그인 중 오류가 발생했습니다.',
+      );
     } finally {
       setSubmitting(false);
     }
@@ -83,7 +85,6 @@ export default function EmailLoginScreen({ navigation }: Props) {
             accessibilityLabel="뒤로 가기"
             style={styles.backButton}
             onPress={() => navigation.goBack()}
-            disabled={submitting}
           >
             <ArrowLeft size={24} color={colors.gray500} />
           </Pressable>
@@ -119,15 +120,14 @@ export default function EmailLoginScreen({ navigation }: Props) {
                   onChangeText={setPassword}
                   secureTextEntry={!showPassword}
                   textContentType="password"
-                  onSubmitEditing={submitLogin}
                   editable={!submitting}
+                  onSubmitEditing={() => void submitLogin()}
                 />
                 <Pressable
                   accessibilityRole="button"
                   accessibilityLabel={showPassword ? '비밀번호 숨기기' : '비밀번호 보기'}
                   hitSlop={10}
                   onPress={() => setShowPassword((prev) => !prev)}
-                  disabled={submitting}
                 >
                   {showPassword ? (
                     <EyeOff size={20} color={colors.gray400} />
@@ -139,33 +139,14 @@ export default function EmailLoginScreen({ navigation }: Props) {
             </View>
 
             <Pressable
-              style={styles.checkboxRow}
-              onPress={() => setAutoLogin((prev) => !prev)}
-              disabled={submitting}
-            >
-              <View style={[styles.checkbox, autoLogin && styles.checkboxChecked]}>
-                {autoLogin && <Check size={14} color={colors.white} strokeWidth={3} />}
-              </View>
-              <Text style={styles.checkboxText}>자동 로그인</Text>
-            </Pressable>
-
-            {errorMessage && <Text style={styles.errorText}>{errorMessage}</Text>}
-
-            <Pressable
               accessibilityRole="button"
-              style={({ pressed }) => [
-                styles.primaryButton,
-                pressed && styles.buttonPressed,
-                submitting && styles.buttonDisabled,
-              ]}
-              onPress={submitLogin}
+              style={({ pressed }) => [styles.primaryButton, (pressed || submitting) && styles.buttonPressed]}
+              onPress={() => void submitLogin()}
               disabled={submitting}
             >
-              {submitting ? (
-                <ActivityIndicator size="small" color={colors.white} />
-              ) : (
-                <Text style={styles.primaryButtonText}>로그인</Text>
-              )}
+              {submitting
+                ? <ActivityIndicator color={colors.white} />
+                : <Text style={styles.primaryButtonText}>로그인</Text>}
             </Pressable>
           </View>
         </View>
@@ -239,35 +220,6 @@ const styles = StyleSheet.create({
     color: colors.text,
     fontSize: 15,
   },
-  checkboxRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    alignSelf: 'flex-start',
-    gap: 8,
-  },
-  checkbox: {
-    width: 20,
-    height: 20,
-    borderRadius: 5,
-    borderWidth: 2,
-    borderColor: colors.gray300,
-    backgroundColor: colors.white,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  checkboxChecked: {
-    backgroundColor: colors.primary,
-    borderColor: colors.primary,
-  },
-  checkboxText: {
-    fontSize: 14,
-    color: colors.gray500,
-  },
-  errorText: {
-    color: '#EF4444',
-    fontSize: 13,
-    lineHeight: 18,
-  },
   primaryButton: {
     height: 54,
     borderRadius: 16,
@@ -283,8 +235,5 @@ const styles = StyleSheet.create({
   },
   buttonPressed: {
     opacity: 0.82,
-  },
-  buttonDisabled: {
-    opacity: 0.7,
   },
 });

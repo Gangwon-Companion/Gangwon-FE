@@ -33,6 +33,9 @@ yarn-error.*
 .DS_Store
 *.pem
 
+# IntelliJ IDEA
+.idea/
+
 # local env files
 .env*.local
 
