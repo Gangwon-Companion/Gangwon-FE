@@ -20,6 +20,7 @@ import { parseApiError, saveAccessToken } from '../../api/auth';
 import { getApiBaseUrl, requestHeaders } from '../home/api';
 
 type Props = NativeStackScreenProps<RootStackParamList, 'EmailLogin'>;
+const LOGIN_TIMEOUT_MS = 8000;
 
 export default function EmailLoginScreen({ navigation }: Props) {
   const [username, setUsername] = useState('');
@@ -35,15 +36,20 @@ export default function EmailLoginScreen({ navigation }: Props) {
     }
 
     setSubmitting(true);
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), LOGIN_TIMEOUT_MS);
+
     try {
-      const apiBaseUrl = await getApiBaseUrl();
+      const apiBaseUrl = await getApiBaseUrl(undefined, { skipProbe: true });
       const response = await fetch(`${apiBaseUrl}/api/v1/auth/login`, {
         method: 'POST',
         headers: {
           ...requestHeaders,
+          Accept: 'application/json',
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({ username: trimmedUsername, password }),
+        signal: controller.signal,
       });
 
       if (!response.ok) throw await parseApiError(response);
@@ -65,6 +71,7 @@ export default function EmailLoginScreen({ navigation }: Props) {
         error instanceof Error ? error.message : '로그인 중 오류가 발생했습니다.',
       );
     } finally {
+      clearTimeout(timeout);
       setSubmitting(false);
     }
   };

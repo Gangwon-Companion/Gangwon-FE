@@ -19,7 +19,7 @@ import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { Ionicons } from '@expo/vector-icons';
 import * as Location from 'expo-location';
 import type { RootStackParamList } from '../../navigation/types';
-import { getApiBaseUrl, requestHeaders } from './api';
+import { buildRequestHeaders, getApiBaseUrl } from './api';
 
 const THEME_COLOR = '#008A9A';
 const BG_COLOR = '#F7F8FA';
@@ -95,7 +95,7 @@ export default function HotelsTabScreen() {
       if (keyword) params.set('keyword', keyword);
 
       const listResponse = await fetch(`${apiBaseUrl}/api/v1/lodgings?${params.toString()}`, {
-        headers: requestHeaders,
+        headers: await buildRequestHeaders(),
         signal,
       });
       if (!listResponse.ok) throw new Error(`숙소 목록 요청 실패 (${listResponse.status})`);
@@ -107,7 +107,7 @@ export default function HotelsTabScreen() {
         list.items.map(async (item): Promise<Hotel> => {
           try {
             const detailResponse = await fetch(`${apiBaseUrl}/api/v1/lodgings/${item.lodgingId}`, {
-              headers: requestHeaders,
+              headers: await buildRequestHeaders(),
               signal,
             });
             if (!detailResponse.ok) throw new Error();
