@@ -139,7 +139,7 @@ export default function HomeScreen() {
       const [apiBaseUrl, token] = await Promise.all([getApiBaseUrl(), getAccessToken()]);
       if (!token) throw new Error('검색 이력 저장은 로그인이 필요합니다.');
 
-      const historyResponse = await fetch(`${apiBaseUrl}/api/search-history`, {
+      const historyResponse = await fetch(`${apiBaseUrl}/api/v1/search-history`, {
         method: 'POST',
         headers: {
           ...requestHeaders,
@@ -152,7 +152,7 @@ export default function HomeScreen() {
 
       setOfferLoading(true);
       setOfferError(null);
-      const offerResponse = await fetch(`${apiBaseUrl}/api/promotions/details?limit=5`, {
+      const offerResponse = await fetch(`${apiBaseUrl}/api/v1/promotions/details?limit=5`, {
         headers: { ...requestHeaders, Authorization: `Bearer ${token}` },
       });
       if (!offerResponse.ok) throw new Error(`맞춤 할인 요청 실패 (${offerResponse.status})`);
@@ -215,7 +215,7 @@ export default function HomeScreen() {
       setPromotionsError(null);
       try {
         const apiBaseUrl = await getApiBaseUrl(controller.signal);
-        const bannerResponse = await fetch(`${apiBaseUrl}/api/banners?limit=5`, {
+        const bannerResponse = await fetch(`${apiBaseUrl}/api/v1/banners?limit=5`, {
           headers: requestHeaders,
           signal: controller.signal,
         });
@@ -251,7 +251,7 @@ export default function HomeScreen() {
         ]);
         if (!token) throw new Error('맞춤 할인 추천은 로그인이 필요합니다.');
 
-        const offerRequest = fetch(`${apiBaseUrl}/api/promotions/details?limit=5`, {
+        const offerRequest = fetch(`${apiBaseUrl}/api/v1/promotions/details?limit=5`, {
           headers: { ...requestHeaders, Authorization: `Bearer ${token}` },
           signal: controller.signal,
         });

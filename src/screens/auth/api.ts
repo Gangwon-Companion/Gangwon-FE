@@ -18,7 +18,7 @@ export async function login(username: string, password: string) {
   const timeout = setTimeout(() => controller.abort(), LOGIN_TIMEOUT_MS);
 
   try {
-    response = await fetch(`${apiBaseUrl}/api/auth/login`, {
+    response = await fetch(`${apiBaseUrl}/api/v1/auth/login`, {
       method: 'POST',
       headers: {
         ...requestHeaders,
