@@ -7,7 +7,7 @@ import { CommunityMedia } from '../types';
 
 type Props = {
   media: CommunityMedia[];
-  onOpenMedia: (media: CommunityMedia) => void;
+  onOpenMedia?: (media: CommunityMedia) => void;
   showEmpty?: boolean;
   tileSize?: 'post' | 'draft' | 'preview';
   removable?: boolean;
@@ -40,7 +40,8 @@ export default function CommunityMediaList({
       key={item.id}
       activeOpacity={0.9}
       style={[styles.mediaTile, styles[`${tileSize}Tile`]]}
-      onPress={() => onOpenMedia(item)}
+      onPress={() => onOpenMedia?.(item)}
+      disabled={!onOpenMedia}
     >
       <Image source={{ uri: item.uri }} style={styles.mediaImage} />
       {tileSize === 'draft' ? (

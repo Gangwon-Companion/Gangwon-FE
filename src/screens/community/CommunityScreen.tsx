@@ -457,7 +457,6 @@ export default function CommunityScreen() {
                 onToggleExpanded={toggleExpanded}
                 onToggleLike={toggleLike}
                 onToggleSave={toggleSave}
-                onOpenMedia={setSelectedMedia}
               />
             ))}
             <CommunityPagination
@@ -538,7 +537,7 @@ export default function CommunityScreen() {
                 </TouchableOpacity>
               ) : null}
 
-              <CommunityMediaList media={selectedPost.media} onOpenMedia={setSelectedMedia} />
+              <CommunityMediaList media={selectedPost.media} />
               <TravelCourseCard course={selectedPost.course} />
 
               <View style={styles.tagRow}>

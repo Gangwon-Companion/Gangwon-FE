@@ -3,7 +3,7 @@ import { Image, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 
 import CommunityMediaList from './CommunityMediaList';
-import { CommunityMedia, CommunityPost } from '../types';
+import { CommunityPost } from '../types';
 
 const COLORS = {
   background: '#F5F7F8',
@@ -21,7 +21,6 @@ type Props = {
   onToggleExpanded: (postId: number) => void;
   onToggleLike: (postId: number) => void;
   onToggleSave: (postId: number) => void;
-  onOpenMedia: (media: CommunityMedia) => void;
 };
 
 export default function CommunityPostCard({
@@ -31,7 +30,6 @@ export default function CommunityPostCard({
   onToggleExpanded,
   onToggleLike,
   onToggleSave,
-  onOpenMedia,
 }: Props) {
   const previewComments = post.comments.slice(0, 2);
   const isLongCaption = post.content.length > 90;
@@ -51,7 +49,7 @@ export default function CommunityPostCard({
       </TouchableOpacity>
 
       <View style={styles.mediaContainer}>
-        <CommunityMediaList media={post.media} onOpenMedia={onOpenMedia} />
+        <CommunityMediaList media={post.media} />
         {post.course ? (
           <View style={styles.regionBadge}><Text style={styles.regionBadgeText}>강원</Text></View>
         ) : null}
