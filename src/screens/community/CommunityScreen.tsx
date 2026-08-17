@@ -45,7 +45,6 @@ import {
 import {
   EMPTY_DRAFT_POST,
   MEDIA_PRESETS,
-  MOCK_COMMUNITY_POSTS,
 } from './mockCommunityData';
 import {
   CommunityApiComment,
@@ -58,6 +57,8 @@ import {
   fetchCommunityPost,
   fetchCommunityPosts,
   likeCommunityPost,
+  likeCommunityComment,
+  saveCommunityPost,
   updateCommunityPost,
   fetchMyCommunityCourses,
   uploadCommunityImage,
@@ -72,8 +73,8 @@ function toComment(comment: CommunityApiComment): CommunityPost['comments'][numb
     content: comment.content,
     createdAt: comment.createdAt,
     createdAtMs: Date.parse(comment.createdAt) || Date.now(),
-    liked: false,
-    likeCount: 0,
+    liked: comment.liked,
+    likeCount: comment.likeCount,
   };
 }
 
@@ -89,9 +90,9 @@ function summaryToPost(post: CommunityApiPostSummary, courses: TravelCourse[]): 
     course: post.courseId ? courses.find((course) => course.id === post.courseId) : undefined,
     hashtags: post.hashtags ?? [],
     liked: post.liked,
-    saved: false,
+    saved: post.saved,
     likeCount: post.likeCount,
-    saveCount: 0,
+    saveCount: post.saveCount,
     comments: [],
     createdAt: post.createdAt,
     createdAtMs: Date.parse(post.createdAt) || Date.now(),
@@ -114,7 +115,9 @@ function detailToPost(post: CommunityApiPostDetail, courses: TravelCourse[], pre
     isMine: post.isMine,
     liked: post.liked,
     hashtags: post.hashtags ?? [],
+    saved: post.saved,
     likeCount: post.likeCount,
+    saveCount: post.saveCount,
     comments: post.comments.map(toComment),
   };
 }
@@ -122,7 +125,7 @@ function detailToPost(post: CommunityApiPostDetail, courses: TravelCourse[], pre
 export default function CommunityScreen() {
   const tabBarHeight = useBottomTabBarHeight();
   const [mode, setMode] = useState<ScreenMode>('list');
-  const [posts, setPosts] = useState<CommunityPost[]>(MOCK_COMMUNITY_POSTS);
+  const [posts, setPosts] = useState<CommunityPost[]>([]);
   const [selectedPostId, setSelectedPostId] = useState<number | null>(null);
   const [editingPostId, setEditingPostId] = useState<number | null>(null);
   const [draft, setDraft] = useState<DraftPost>(EMPTY_DRAFT_POST);
@@ -149,7 +152,7 @@ export default function CommunityScreen() {
     }).catch(() => setCourses([]));
     fetchCommunityPosts()
       .then(async (response) => {
-        if (!active || response.content.length === 0) return;
+        if (!active) return;
         const detailedPosts = await Promise.all(response.content.map(async (summary) => {
           try {
             return detailToPost(await fetchCommunityPost(summary.id), courses, summaryToPost(summary, courses));
@@ -289,6 +292,9 @@ export default function CommunityScreen() {
   };
 
   const toggleSave = (postId: number) => {
+    const current = posts.find((item) => item.id === postId);
+    if (!current) return;
+    void saveCommunityPost(postId, current.saved).catch(() => undefined);
     updatePost(postId, (post) => ({
       ...post,
       saved: !post.saved,
@@ -335,6 +341,9 @@ export default function CommunityScreen() {
   };
 
   const toggleCommentLike = (postId: number, commentId: number) => {
+    const current = posts.find((item) => item.id === postId)?.comments.find((item) => item.id === commentId);
+    if (!current) return;
+    void likeCommunityComment(commentId, current.liked).catch(() => undefined);
     updatePost(postId, (post) => ({
       ...post,
       comments: post.comments.map((comment) =>
