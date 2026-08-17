@@ -21,6 +21,9 @@ export type CommunityApiPostSummary = {
   likeCount: number;
   imageCount: number;
   courseId: number | null;
+  isMine: boolean;
+  liked: boolean;
+  hashtags: string[];
   createdAt: string;
 };
 
@@ -41,7 +44,14 @@ type PostPayload = {
   title: string;
   content: string;
   courseId: number | null;
+  hashtags: string[];
   images: CommunityApiImage[];
+};
+
+export type CommunityCourse = {
+  id: number;
+  name: string;
+  places: Array<{ id: number; placeType: string; placeId: number; visitOrder: number }>;
 };
 
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
@@ -114,4 +124,23 @@ export function likeCommunityPost(postId: number, liked: boolean) {
   return request<void>(`/api/v1/community/posts/${postId}/likes`, {
     method: liked ? 'DELETE' : 'POST',
   });
+}
+
+export async function fetchMyCommunityCourses() {
+  return request<CommunityCourse[]>('/api/v1/courses');
+}
+
+export async function uploadCommunityImage(uri: string, fileName = 'community-image.jpg', contentType = 'image/jpeg') {
+  const baseUrl = await getApiBaseUrl(undefined, { skipProbe: true });
+  const presignResponse = await fetch(`${baseUrl}/api/v1/community/files/presigned-url`, {
+    method: 'POST',
+    headers: { ...(await buildRequestHeaders()), Accept: 'application/json', 'Content-Type': 'application/json' },
+    body: JSON.stringify({ originalFileName: fileName, contentType }),
+  });
+  if (!presignResponse.ok) throw new Error(`이미지 업로드 URL 발급 실패 (${presignResponse.status})`);
+  const presigned = await presignResponse.json() as { s3Key: string; uploadUrl: string };
+  const blob = await (await fetch(uri)).blob();
+  const uploadResponse = await fetch(presigned.uploadUrl, { method: 'PUT', headers: { 'Content-Type': contentType }, body: blob });
+  if (!uploadResponse.ok) throw new Error(`S3 이미지 업로드 실패 (${uploadResponse.status})`);
+  return { s3Key: presigned.s3Key, url: presigned.uploadUrl.split('?')[0] };
 }
