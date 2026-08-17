@@ -81,10 +81,6 @@ export default function CommunityPostForm({
             <Ionicons name="image-outline" size={20} color={COLORS.primary} />
             <Text style={styles.attachText}>사진 추가</Text>
           </TouchableOpacity>
-          <TouchableOpacity onPress={() => onAddMedia('video')} style={styles.attachButton}>
-            <Ionicons name="videocam-outline" size={20} color={COLORS.primary} />
-            <Text style={styles.attachText}>동영상 추가</Text>
-          </TouchableOpacity>
         </View>
         {draft.media.length > 0 ? (
           <CommunityMediaList

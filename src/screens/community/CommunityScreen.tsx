@@ -1,4 +1,5 @@
 import React, { useEffect, useMemo, useState } from 'react';
+import * as ImagePicker from 'expo-image-picker';
 import {
   Alert,
   Image,
@@ -39,12 +40,12 @@ import {
   MediaType,
   PeriodOption,
   SortOption,
+  TravelCourse,
 } from './types';
 import {
   EMPTY_DRAFT_POST,
   MEDIA_PRESETS,
   MOCK_COMMUNITY_POSTS,
-  MY_TRAVEL_COURSES,
 } from './mockCommunityData';
 import {
   CommunityApiComment,
@@ -58,6 +59,8 @@ import {
   fetchCommunityPosts,
   likeCommunityPost,
   updateCommunityPost,
+  fetchMyCommunityCourses,
+  uploadCommunityImage,
 } from './api';
 
 type ScreenMode = 'list' | 'detail' | 'form';
@@ -74,18 +77,18 @@ function toComment(comment: CommunityApiComment): CommunityPost['comments'][numb
   };
 }
 
-function summaryToPost(post: CommunityApiPostSummary): CommunityPost {
+function summaryToPost(post: CommunityApiPostSummary, courses: TravelCourse[]): CommunityPost {
   return {
     id: post.id,
     title: post.title,
     author: post.author,
     avatar: 'https://images.unsplash.com/photo-1494790108377-be9c29b29330?w=120&h=120&fit=crop',
-    isMine: false,
+    isMine: post.isMine,
     content: post.title,
     media: [],
-    course: post.courseId ? MY_TRAVEL_COURSES.find((course) => course.id === post.courseId) : undefined,
-    hashtags: [],
-    liked: false,
+    course: post.courseId ? courses.find((course) => course.id === post.courseId) : undefined,
+    hashtags: post.hashtags ?? [],
+    liked: post.liked,
     saved: false,
     likeCount: post.likeCount,
     saveCount: 0,
@@ -95,7 +98,7 @@ function summaryToPost(post: CommunityApiPostSummary): CommunityPost {
   };
 }
 
-function detailToPost(post: CommunityApiPostDetail, previous?: CommunityPost): CommunityPost {
+function detailToPost(post: CommunityApiPostDetail, courses: TravelCourse[], previous?: CommunityPost): CommunityPost {
   const media: CommunityMedia[] = post.images.map((image: CommunityApiImage, index) => ({
     id: index + 1,
     type: 'image',
@@ -103,11 +106,14 @@ function detailToPost(post: CommunityApiPostDetail, previous?: CommunityPost): C
     originalUri: image.s3Key,
   }));
   return {
-    ...(previous ?? summaryToPost(post)),
+    ...(previous ?? summaryToPost(post, courses)),
     title: post.title,
     content: post.content,
     media,
-    course: post.courseId ? MY_TRAVEL_COURSES.find((course) => course.id === post.courseId) : undefined,
+    course: post.courseId ? courses.find((course) => course.id === post.courseId) : undefined,
+    isMine: post.isMine,
+    liked: post.liked,
+    hashtags: post.hashtags ?? [],
     likeCount: post.likeCount,
     comments: post.comments.map(toComment),
   };
@@ -128,17 +134,27 @@ export default function CommunityScreen() {
   const [commentSort, setCommentSort] = useState<CommentSortOption>('latest');
   const [page, setPage] = useState(1);
   const [selectedMedia, setSelectedMedia] = useState<CommunityMedia | null>(null);
+  const [courses, setCourses] = useState<TravelCourse[]>([]);
 
   useEffect(() => {
     let active = true;
+    fetchMyCommunityCourses().then((items) => {
+      if (!active) return;
+      setCourses(items.map((course) => ({
+        id: course.id,
+        title: course.name,
+        days: `${course.places.length}개 장소`,
+        places: course.places.sort((a, b) => a.visitOrder - b.visitOrder).map((place) => `${place.placeType}:${place.placeId}`),
+      })));
+    }).catch(() => setCourses([]));
     fetchCommunityPosts()
       .then(async (response) => {
         if (!active || response.content.length === 0) return;
         const detailedPosts = await Promise.all(response.content.map(async (summary) => {
           try {
-            return detailToPost(await fetchCommunityPost(summary.id), summaryToPost(summary));
+            return detailToPost(await fetchCommunityPost(summary.id), courses, summaryToPost(summary, courses));
           } catch {
-            return summaryToPost(summary);
+            return summaryToPost(summary, courses);
           }
         }));
         if (active) setPosts(detailedPosts);
@@ -228,7 +244,7 @@ export default function CommunityScreen() {
     setMode('detail');
     void fetchCommunityPost(postId)
       .then((post) => {
-        setPosts((current) => current.map((item) => (item.id === postId ? detailToPost(post, item) : item)));
+        setPosts((current) => current.map((item) => (item.id === postId ? detailToPost(post, courses, item) : item)));
       })
       .catch(() => undefined);
   };
@@ -334,28 +350,22 @@ export default function CommunityScreen() {
   };
 
   const addDraftMedia = (type: MediaType) => {
-    setDraft((current) => {
-      if (current.media.length >= MAX_MEDIA_COUNT) {
-        Alert.alert('첨부 개수 제한', `사진과 동영상은 합쳐서 최대 ${MAX_MEDIA_COUNT}개까지 추가할 수 있어요.`);
-        return current;
-      }
-
-      const presetList = MEDIA_PRESETS[type];
-      const sameTypeCount = current.media.filter((item) => item.type === type).length;
-      const preset = presetList[sameTypeCount % presetList.length];
-
-      return {
+    if (type !== 'image') return;
+    void ImagePicker.launchImageLibraryAsync({
+      mediaTypes: ['images'],
+      allowsMultipleSelection: true,
+      selectionLimit: MAX_MEDIA_COUNT,
+      quality: 0.85,
+    }).then((result) => {
+      if (result.canceled) return;
+      setDraft((current) => ({
         ...current,
-        media: [
-          ...current.media,
-          {
-            id: Date.now() + current.media.length,
-            type,
-            uri: preset.uri,
-            originalUri: preset.originalUri,
-          },
-        ],
-      };
+        media: [...current.media, ...result.assets.map((asset, index) => ({
+          id: Date.now() + index,
+          type: 'image' as const,
+          uri: asset.uri,
+        }))].slice(0, MAX_MEDIA_COUNT),
+      }));
     });
   };
 
@@ -378,28 +388,29 @@ export default function CommunityScreen() {
       .split(/[\s,]+/)
       .map((tag) => tag.trim().replace(/^#/, ''))
       .filter(Boolean);
-    const course = MY_TRAVEL_COURSES.find((item) => item.id === draft.courseId);
     const media = draft.media;
 
     const payload = {
       title,
       content,
       courseId: draft.courseId,
-      images: media.map((item, index) => ({
-        s3Key: item.originalUri ?? item.uri,
-        url: item.uri,
-        sortOrder: index,
-      })),
+      hashtags,
+      images: [],
     };
-    const request = editingPost
-      ? updateCommunityPost(editingPost.id, payload)
-      : createCommunityPost(payload);
-
-    void request
+    void Promise.all(media.map(async (item, index) => {
+      if (item.originalUri && !item.uri.startsWith('file:') && !item.uri.startsWith('content:')) {
+        return { s3Key: item.originalUri, url: item.uri, sortOrder: index };
+      }
+      const uploaded = await uploadCommunityImage(item.uri, `community-${Date.now()}-${index}.jpg`);
+      return { ...uploaded, sortOrder: index };
+    })).then((images) => editingPost
+      ? updateCommunityPost(editingPost.id, { ...payload, images })
+      : createCommunityPost({ ...payload, images }))
       .then((saved) => {
         const nextPost = detailToPost(
           saved,
-          editingPost ? { ...editingPost, isMine: true } : { ...summaryToPost(saved), isMine: true },
+          courses,
+          editingPost ? { ...editingPost, isMine: true } : { ...summaryToPost(saved, courses), isMine: true },
         );
         setPosts((current) => editingPost
           ? current.map((post) => (post.id === editingPost.id ? nextPost : post))
@@ -566,7 +577,7 @@ export default function CommunityScreen() {
       />
       <CommunityPostForm
         draft={draft}
-        courses={MY_TRAVEL_COURSES}
+        courses={courses}
         isEditing={Boolean(editingPost)}
         bottomPadding={tabBarHeight + 24}
         onChangeDraft={setDraft}
