@@ -11,6 +11,9 @@ export type CommunityApiComment = {
   author: string;
   content: string;
   createdAt: string;
+  likeCount: number;
+  liked: boolean;
+  isMine: boolean;
 };
 
 export type CommunityApiPostSummary = {
@@ -23,6 +26,8 @@ export type CommunityApiPostSummary = {
   courseId: number | null;
   isMine: boolean;
   liked: boolean;
+  saved: boolean;
+  saveCount: number;
   hashtags: string[];
   createdAt: string;
 };
@@ -124,6 +129,14 @@ export function likeCommunityPost(postId: number, liked: boolean) {
   return request<void>(`/api/v1/community/posts/${postId}/likes`, {
     method: liked ? 'DELETE' : 'POST',
   });
+}
+
+export function saveCommunityPost(postId: number, saved: boolean) {
+  return request<void>(`/api/v1/community/posts/${postId}/saves`, { method: saved ? 'DELETE' : 'POST' });
+}
+
+export function likeCommunityComment(commentId: number, liked: boolean) {
+  return request<void>(`/api/v1/community/comments/${commentId}/likes`, { method: liked ? 'DELETE' : 'POST' });
 }
 
 export async function fetchMyCommunityCourses() {
