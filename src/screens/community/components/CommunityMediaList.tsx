@@ -1,5 +1,5 @@
-import React from 'react';
-import { Image, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import React, { useState } from 'react';
+import { Dimensions, Image, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 
 import { COMMUNITY_COLORS as COLORS } from '../constants';
@@ -22,6 +22,8 @@ export default function CommunityMediaList({
   removable = false,
   onRemoveMedia,
 }: Props) {
+  const [activeIndex, setActiveIndex] = useState(0);
+
   if (media.length === 0) {
     if (!showEmpty) return null;
 
@@ -33,40 +35,59 @@ export default function CommunityMediaList({
     );
   }
 
-  return (
-    <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.mediaRow}>
-      {media.map((item, index) => (
-        <TouchableOpacity
-          key={item.id}
-          activeOpacity={0.9}
-          style={[styles.mediaTile, styles[`${tileSize}Tile`]]}
-          onPress={() => onOpenMedia(item)}
-        >
-          <Image source={{ uri: item.uri }} style={styles.mediaImage} />
-          {tileSize === 'draft' ? (
-            <View style={styles.draftMediaNumber}>
-              <Text style={styles.draftMediaNumberText}>{index + 1}</Text>
-            </View>
-          ) : null}
-          {item.type === 'video' ? (
-            <View style={styles.videoBadge}>
-              <Ionicons name="play" size={13} color={COLORS.white} />
-              <Text style={styles.videoBadgeText}>동영상</Text>
-            </View>
-          ) : null}
-          {removable ? (
-            <TouchableOpacity
-              onPress={() => onRemoveMedia?.(item.id)}
-              style={styles.removeMediaButton}
-              accessibilityLabel="첨부 삭제"
-            >
-              <Ionicons name="close" size={15} color={COLORS.white} />
-            </TouchableOpacity>
-          ) : null}
+  const renderTile = (item: CommunityMedia, index: number) => (
+    <TouchableOpacity
+      key={item.id}
+      activeOpacity={0.9}
+      style={[styles.mediaTile, styles[`${tileSize}Tile`]]}
+      onPress={() => onOpenMedia(item)}
+    >
+      <Image source={{ uri: item.uri }} style={styles.mediaImage} />
+      {tileSize === 'draft' ? (
+        <View style={styles.draftMediaNumber}>
+          <Text style={styles.draftMediaNumberText}>{index + 1}</Text>
+        </View>
+      ) : null}
+      {item.type === 'video' ? (
+        <View style={styles.videoBadge}>
+          <Ionicons name="play" size={13} color={COLORS.white} />
+          <Text style={styles.videoBadgeText}>동영상</Text>
+        </View>
+      ) : null}
+      {removable ? (
+        <TouchableOpacity onPress={() => onRemoveMedia?.(item.id)} style={styles.removeMediaButton} accessibilityLabel="첨부 삭제">
+          <Ionicons name="close" size={15} color={COLORS.white} />
         </TouchableOpacity>
-      ))}
-    </ScrollView>
+      ) : null}
+    </TouchableOpacity>
   );
+
+  if (tileSize === 'post') {
+    const pageWidth = Dimensions.get('window').width - 32;
+    return (
+      <View style={styles.carousel}>
+        <ScrollView
+          horizontal
+          pagingEnabled
+          showsHorizontalScrollIndicator={false}
+          onMomentumScrollEnd={(event) => setActiveIndex(Math.round(event.nativeEvent.contentOffset.x / pageWidth))}
+        >
+          {media.map((item, index) => (
+            <View key={item.id} style={{ width: pageWidth }}>
+              {renderTile(item, index)}
+            </View>
+          ))}
+        </ScrollView>
+        {media.length > 1 ? (
+          <View style={styles.dots}>
+            {media.map((item, index) => <View key={item.id} style={[styles.dot, index === activeIndex && styles.activeDot]} />)}
+          </View>
+        ) : null}
+      </View>
+    );
+  }
+
+  return <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.mediaRow}>{media.map(renderTile)}</ScrollView>;
 }
 
 const styles = StyleSheet.create({
@@ -80,8 +101,9 @@ const styles = StyleSheet.create({
     backgroundColor: COLORS.border,
   },
   postTile: {
-    width: 180,
-    height: 132,
+    width: '100%',
+    height: (Dimensions.get('window').width - 32) * 1.25,
+    borderRadius: 0,
   },
   draftTile: {
     width: 118,
@@ -94,6 +116,28 @@ const styles = StyleSheet.create({
   mediaImage: {
     width: '100%',
     height: '100%',
+  },
+  carousel: {
+    marginBottom: 0,
+    backgroundColor: '#FFFFFF',
+  },
+  dots: {
+    position: 'absolute',
+    bottom: 22,
+    left: 0,
+    right: 0,
+    flexDirection: 'row',
+    justifyContent: 'center',
+    gap: 5,
+  },
+  dot: {
+    width: 6,
+    height: 6,
+    borderRadius: 3,
+    backgroundColor: 'rgba(255,255,255,0.65)',
+  },
+  activeDot: {
+    backgroundColor: COLORS.white,
   },
   videoBadge: {
     position: 'absolute',

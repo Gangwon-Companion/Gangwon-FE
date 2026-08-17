@@ -2,10 +2,17 @@ import React from 'react';
 import { Image, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 
-import { COMMUNITY_COLORS as COLORS } from '../constants';
-import { CommunityMedia, CommunityPost } from '../types';
 import CommunityMediaList from './CommunityMediaList';
-import TravelCourseCard from './TravelCourseCard';
+import { CommunityMedia, CommunityPost } from '../types';
+
+const COLORS = {
+  background: '#F5F7F8',
+  card: '#FFFFFF',
+  text: '#1A1A1A',
+  muted: '#8A9199',
+  border: '#E5E8EA',
+  accent: '#0E9BA6',
+};
 
 type Props = {
   post: CommunityPost;
@@ -14,7 +21,6 @@ type Props = {
   onToggleExpanded: (postId: number) => void;
   onToggleLike: (postId: number) => void;
   onToggleSave: (postId: number) => void;
-  onToggleSearchTag: (tag: string) => void;
   onOpenMedia: (media: CommunityMedia) => void;
 };
 
@@ -25,181 +31,107 @@ export default function CommunityPostCard({
   onToggleExpanded,
   onToggleLike,
   onToggleSave,
-  onToggleSearchTag,
   onOpenMedia,
 }: Props) {
-  const shouldClamp = post.content.length > 90;
+  const previewComments = post.comments.slice(0, 2);
+  const isLongCaption = post.content.length > 90;
+  const location = post.course?.places?.[0] ?? '강원도';
 
   return (
-    <TouchableOpacity
-      activeOpacity={0.88}
-      style={styles.postCard}
-      onPress={() => onOpenDetail(post.id)}
-    >
-      <View style={styles.authorRow}>
+    <View style={styles.card}>
+      <TouchableOpacity style={styles.header} onPress={() => onOpenDetail(post.id)} activeOpacity={0.85}>
         <Image source={{ uri: post.avatar }} style={styles.avatar} />
-        <View style={styles.authorText}>
-          <Text style={styles.authorName}>{post.author}</Text>
-          <Text style={styles.postTime}>{post.createdAt}</Text>
+        <View style={styles.headerCopy}>
+          <Text style={styles.authorName} numberOfLines={1}>{post.author}</Text>
+          <Text style={styles.meta} numberOfLines={1}>{location} · {post.createdAt}</Text>
         </View>
-        {post.isMine ? <Text style={styles.mineBadge}>내 글</Text> : null}
+        <TouchableOpacity onPress={() => onOpenDetail(post.id)} style={styles.moreButton} accessibilityLabel="게시물 더보기">
+          <Ionicons name="ellipsis-horizontal" size={24} color={COLORS.text} />
+        </TouchableOpacity>
+      </TouchableOpacity>
+
+      <View style={styles.mediaContainer}>
+        <CommunityMediaList media={post.media} onOpenMedia={onOpenMedia} />
+        {post.course ? (
+          <View style={styles.regionBadge}><Text style={styles.regionBadgeText}>강원</Text></View>
+        ) : null}
       </View>
 
-      <Text style={styles.postContent} numberOfLines={expanded ? undefined : 3}>
-        {post.content}
-      </Text>
-      {shouldClamp ? (
-        <TouchableOpacity
-          onPress={(event) => {
-            event.stopPropagation();
-            onToggleExpanded(post.id);
-          }}
-        >
-          <Text style={styles.moreText}>{expanded ? '접기' : '글 더보기'}</Text>
+      <View style={styles.cardContent}>
+        <View style={styles.actionBar}>
+          <TouchableOpacity style={styles.actionButton} onPress={() => onToggleLike(post.id)} accessibilityLabel="좋아요">
+            <Ionicons name={post.liked ? 'heart' : 'heart-outline'} size={24} color={post.liked ? COLORS.accent : COLORS.text} />
+            <Text style={styles.actionCount}>{post.likeCount}</Text>
+          </TouchableOpacity>
+          <TouchableOpacity style={styles.actionButton} onPress={() => onOpenDetail(post.id)} accessibilityLabel="댓글 보기">
+            <Ionicons name="chatbubble-outline" size={24} color={COLORS.text} />
+            <Text style={styles.actionCount}>{post.comments.length}</Text>
+          </TouchableOpacity>
+          <TouchableOpacity style={styles.bookmarkButton} onPress={() => onToggleSave(post.id)} accessibilityLabel="게시물 저장">
+            <Ionicons name={post.saved ? 'bookmark' : 'bookmark-outline'} size={24} color={post.saved ? COLORS.accent : COLORS.text} />
+          </TouchableOpacity>
+        </View>
+
+        <View style={styles.proofRow}>
+          <Image source={{ uri: post.avatar }} style={styles.miniAvatar} />
+          <Text style={styles.proofText}><Text style={styles.semibold}>{post.author}</Text>님 외 여러 명이 좋아합니다</Text>
+        </View>
+
+        <TouchableOpacity onPress={() => onOpenDetail(post.id)} activeOpacity={0.9}>
+          <Text style={styles.caption} numberOfLines={expanded ? undefined : 2}>
+            <Text style={styles.semibold}>{post.author}</Text>{' '}{post.content}
+          </Text>
+          {isLongCaption ? (
+            <Text style={styles.moreText} onPress={() => onToggleExpanded(post.id)}>{expanded ? '접기' : '더 보기'}</Text>
+          ) : null}
         </TouchableOpacity>
-      ) : null}
 
-      <CommunityMediaList
-        media={post.media}
-        onOpenMedia={onOpenMedia}
-      />
-      <TravelCourseCard course={post.course} />
-
-      <View style={styles.tagRow}>
-        {post.hashtags.map((tag) => (
-          <TouchableOpacity
-            key={tag}
-            onPress={(event) => {
-              event.stopPropagation();
-              onToggleSearchTag(tag);
-            }}
-            style={styles.tagChip}
-          >
-            <Text style={styles.tagText}>#{tag}</Text>
+        {previewComments.map((comment) => (
+          <TouchableOpacity key={comment.id} style={styles.commentRow} onPress={() => onOpenDetail(post.id)}>
+            <Text style={styles.commentText} numberOfLines={1}>
+              <Text style={styles.semibold}>{comment.author}</Text>{' '}{comment.content}
+            </Text>
+            <Ionicons name="heart-outline" size={16} color={COLORS.muted} />
           </TouchableOpacity>
         ))}
       </View>
-
-      <View style={styles.actionRow}>
-        <TouchableOpacity
-          onPress={(event) => {
-            event.stopPropagation();
-            onToggleLike(post.id);
-          }}
-          style={styles.actionButton}
-        >
-          <Ionicons name={post.liked ? 'heart' : 'heart-outline'} size={19} color={post.liked ? COLORS.red : COLORS.textSub} />
-          <Text style={styles.actionText}>{post.likeCount}</Text>
-        </TouchableOpacity>
-        <View style={styles.actionButton}>
-          <Ionicons name="chatbubble-outline" size={18} color={COLORS.textSub} />
-          <Text style={styles.actionText}>{post.comments.length}</Text>
-        </View>
-        <TouchableOpacity
-          onPress={(event) => {
-            event.stopPropagation();
-            onToggleSave(post.id);
-          }}
-          style={styles.actionButton}
-        >
-          <Ionicons name={post.saved ? 'bookmark' : 'bookmark-outline'} size={18} color={post.saved ? COLORS.primary : COLORS.textSub} />
-          <Text style={styles.actionText}>{post.saveCount}</Text>
-        </TouchableOpacity>
-      </View>
-    </TouchableOpacity>
+    </View>
   );
 }
 
 const styles = StyleSheet.create({
-  postCard: {
-    backgroundColor: COLORS.white,
-    borderWidth: 1,
-    borderColor: COLORS.border,
-    borderRadius: 12,
-    padding: 16,
-    marginBottom: 14,
-  },
-  authorRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 10,
+  card: {
+    marginHorizontal: -4,
     marginBottom: 12,
-  },
-  avatar: {
-    width: 42,
-    height: 42,
-    borderRadius: 21,
-    backgroundColor: COLORS.border,
-  },
-  authorText: {
-    flex: 1,
-  },
-  authorName: {
-    color: COLORS.text,
-    fontSize: 14,
-    fontWeight: '800',
-  },
-  postTime: {
-    color: COLORS.textMuted,
-    fontSize: 12,
-    marginTop: 2,
-  },
-  mineBadge: {
     overflow: 'hidden',
-    borderRadius: 999,
-    backgroundColor: COLORS.primaryLight,
-    color: COLORS.primaryDark,
-    fontSize: 11,
-    fontWeight: '800',
-    paddingHorizontal: 9,
-    paddingVertical: 5,
+    borderRadius: 16,
+    backgroundColor: COLORS.card,
+    shadowColor: '#000000',
+    shadowOpacity: 0.06,
+    shadowRadius: 8,
+    shadowOffset: { width: 0, height: 2 },
+    elevation: 2,
   },
-  postContent: {
-    color: COLORS.text,
-    fontSize: 15,
-    lineHeight: 22,
-  },
-  moreText: {
-    color: COLORS.primary,
-    fontSize: 13,
-    fontWeight: '800',
-    marginTop: 8,
-  },
-  tagRow: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: 7,
-    marginTop: 12,
-  },
-  tagChip: {
-    borderRadius: 999,
-    backgroundColor: '#EEF2F3',
-    paddingHorizontal: 10,
-    paddingVertical: 6,
-  },
-  tagText: {
-    color: COLORS.textSub,
-    fontSize: 12,
-    fontWeight: '800',
-  },
-  actionRow: {
-    minHeight: 38,
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 16,
-    borderTopWidth: 1,
-    borderTopColor: COLORS.border,
-    marginTop: 14,
-    paddingTop: 12,
-  },
-  actionButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 5,
-  },
-  actionText: {
-    color: COLORS.textSub,
-    fontSize: 13,
-    fontWeight: '800',
-  },
+  header: { minHeight: 68, flexDirection: 'row', alignItems: 'center', paddingHorizontal: 14, paddingVertical: 12 },
+  avatar: { width: 44, height: 44, borderRadius: 22, backgroundColor: COLORS.border },
+  headerCopy: { flex: 1, marginLeft: 10 },
+  authorName: { color: COLORS.text, fontSize: 15, fontWeight: '600' },
+  meta: { color: COLORS.muted, fontSize: 12, marginTop: 3 },
+  moreButton: { width: 30, height: 30, alignItems: 'flex-end', justifyContent: 'center' },
+  mediaContainer: { position: 'relative', backgroundColor: COLORS.card },
+  regionBadge: { position: 'absolute', top: 10, right: 12, borderRadius: 12, backgroundColor: 'rgba(0,0,0,0.5)', paddingHorizontal: 8, paddingVertical: 4 },
+  regionBadgeText: { color: '#FFFFFF', fontSize: 12 },
+  cardContent: { paddingHorizontal: 14 },
+  actionBar: { minHeight: 48, flexDirection: 'row', alignItems: 'center', gap: 20, paddingVertical: 10 },
+  actionButton: { flexDirection: 'row', alignItems: 'center', gap: 6 },
+  actionCount: { color: COLORS.text, fontSize: 13 },
+  bookmarkButton: { marginLeft: 'auto' },
+  proofRow: { minHeight: 24, flexDirection: 'row', alignItems: 'center', marginBottom: 8 },
+  miniAvatar: { width: 16, height: 16, borderRadius: 8, marginRight: 7 },
+  proofText: { color: COLORS.muted, fontSize: 14 },
+  semibold: { color: COLORS.text, fontWeight: '600' },
+  caption: { color: COLORS.text, fontSize: 14, lineHeight: 20 },
+  moreText: { color: COLORS.muted, fontSize: 14, lineHeight: 20 },
+  commentRow: { minHeight: 24, flexDirection: 'row', alignItems: 'center', gap: 8, marginTop: 4 },
+  commentText: { flex: 1, color: COLORS.text, fontSize: 14, lineHeight: 20 },
 });
