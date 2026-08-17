@@ -1,4 +1,5 @@
 import React, { useEffect, useMemo, useState } from 'react';
+import * as ImagePicker from 'expo-image-picker';
 import {
   Alert,
   Image,
@@ -39,15 +40,84 @@ import {
   MediaType,
   PeriodOption,
   SortOption,
+  TravelCourse,
 } from './types';
 import {
   EMPTY_DRAFT_POST,
   MEDIA_PRESETS,
   MOCK_COMMUNITY_POSTS,
-  MY_TRAVEL_COURSES,
 } from './mockCommunityData';
+import {
+  CommunityApiComment,
+  CommunityApiImage,
+  CommunityApiPostDetail,
+  CommunityApiPostSummary,
+  createCommunityComment,
+  createCommunityPost,
+  deleteCommunityPost,
+  fetchCommunityPost,
+  fetchCommunityPosts,
+  likeCommunityPost,
+  updateCommunityPost,
+  fetchMyCommunityCourses,
+  uploadCommunityImage,
+} from './api';
 
 type ScreenMode = 'list' | 'detail' | 'form';
+
+function toComment(comment: CommunityApiComment): CommunityPost['comments'][number] {
+  return {
+    id: comment.id,
+    author: comment.author,
+    content: comment.content,
+    createdAt: comment.createdAt,
+    createdAtMs: Date.parse(comment.createdAt) || Date.now(),
+    liked: false,
+    likeCount: 0,
+  };
+}
+
+function summaryToPost(post: CommunityApiPostSummary, courses: TravelCourse[]): CommunityPost {
+  return {
+    id: post.id,
+    title: post.title,
+    author: post.author,
+    avatar: 'https://images.unsplash.com/photo-1494790108377-be9c29b29330?w=120&h=120&fit=crop',
+    isMine: post.isMine,
+    content: post.title,
+    media: [],
+    course: post.courseId ? courses.find((course) => course.id === post.courseId) : undefined,
+    hashtags: post.hashtags ?? [],
+    liked: post.liked,
+    saved: false,
+    likeCount: post.likeCount,
+    saveCount: 0,
+    comments: [],
+    createdAt: post.createdAt,
+    createdAtMs: Date.parse(post.createdAt) || Date.now(),
+  };
+}
+
+function detailToPost(post: CommunityApiPostDetail, courses: TravelCourse[], previous?: CommunityPost): CommunityPost {
+  const media: CommunityMedia[] = post.images.map((image: CommunityApiImage, index) => ({
+    id: index + 1,
+    type: 'image',
+    uri: image.url,
+    originalUri: image.s3Key,
+  }));
+  return {
+    ...(previous ?? summaryToPost(post, courses)),
+    title: post.title,
+    content: post.content,
+    media,
+    course: post.courseId ? courses.find((course) => course.id === post.courseId) : undefined,
+    isMine: post.isMine,
+    liked: post.liked,
+    hashtags: post.hashtags ?? [],
+    likeCount: post.likeCount,
+    comments: post.comments.map(toComment),
+  };
+}
 
 export default function CommunityScreen() {
   const tabBarHeight = useBottomTabBarHeight();
@@ -64,6 +134,38 @@ export default function CommunityScreen() {
   const [commentSort, setCommentSort] = useState<CommentSortOption>('latest');
   const [page, setPage] = useState(1);
   const [selectedMedia, setSelectedMedia] = useState<CommunityMedia | null>(null);
+  const [courses, setCourses] = useState<TravelCourse[]>([]);
+
+  useEffect(() => {
+    let active = true;
+    fetchMyCommunityCourses().then((items) => {
+      if (!active) return;
+      setCourses(items.map((course) => ({
+        id: course.id,
+        title: course.name,
+        days: `${course.places.length}개 장소`,
+        places: course.places.sort((a, b) => a.visitOrder - b.visitOrder).map((place) => `${place.placeType}:${place.placeId}`),
+      })));
+    }).catch(() => setCourses([]));
+    fetchCommunityPosts()
+      .then(async (response) => {
+        if (!active || response.content.length === 0) return;
+        const detailedPosts = await Promise.all(response.content.map(async (summary) => {
+          try {
+            return detailToPost(await fetchCommunityPost(summary.id), courses, summaryToPost(summary, courses));
+          } catch {
+            return summaryToPost(summary, courses);
+          }
+        }));
+        if (active) setPosts(detailedPosts);
+      })
+      .catch(() => {
+        // BE가 실행되지 않은 개발 환경에서는 mock 데이터를 유지한다.
+      });
+    return () => {
+      active = false;
+    };
+  }, []);
 
   const selectedPost = posts.find((post) => post.id === selectedPostId) ?? null;
   const editingPost = posts.find((post) => post.id === editingPostId) ?? null;
@@ -85,9 +187,9 @@ export default function CommunityScreen() {
       const inPeriod = periodStartMs ? post.createdAtMs >= periodStartMs : true;
       const hasAllTags =
         searchTerms.length === 0 ||
-        searchTerms.every((term) =>
-          post.hashtags.some((tag) => tag.toLowerCase().includes(term)),
-        );
+        searchTerms.every((term) => [post.title, post.content, ...post.hashtags]
+          .filter(Boolean)
+          .some((value) => value!.toLowerCase().includes(term)));
 
       return inPeriod && hasAllTags;
     });
@@ -127,6 +229,7 @@ export default function CommunityScreen() {
   const openEditForm = (post: CommunityPost) => {
     setEditingPostId(post.id);
     setDraft({
+      title: post.title ?? post.content.slice(0, 120),
       content: post.content,
       hashtags: post.hashtags.join(' '),
       media: post.media,
@@ -139,6 +242,11 @@ export default function CommunityScreen() {
     setSelectedPostId(postId);
     setCommentText('');
     setMode('detail');
+    void fetchCommunityPost(postId)
+      .then((post) => {
+        setPosts((current) => current.map((item) => (item.id === postId ? detailToPost(post, courses, item) : item)));
+      })
+      .catch(() => undefined);
   };
 
   const goBack = () => {
@@ -171,6 +279,8 @@ export default function CommunityScreen() {
   };
 
   const toggleLike = (postId: number) => {
+    const post = posts.find((item) => item.id === postId);
+    if (post) void likeCommunityPost(postId, post.liked).catch(() => undefined);
     updatePost(postId, (post) => ({
       ...post,
       liked: !post.liked,
@@ -186,6 +296,26 @@ export default function CommunityScreen() {
     }));
   };
 
+  const deletePost = (postId: number) => {
+    Alert.alert('게시글 삭제', '이 게시글을 삭제하시겠어요?', [
+      { text: '취소', style: 'cancel' },
+      {
+        text: '삭제',
+        style: 'destructive',
+        onPress: () => {
+          void deleteCommunityPost(postId)
+            .then(() => {
+              setPosts((current) => current.filter((post) => post.id !== postId));
+              setSelectedPostId(null);
+              setEditingPostId(null);
+              setMode('list');
+            })
+            .catch(() => Alert.alert('삭제 실패', '로그인 상태와 서버 연결을 확인해주세요.'));
+        },
+      },
+    ]);
+  };
+
   const toggleExpanded = (postId: number) => {
     setExpandedPostIds((current) =>
       current.includes(postId) ? current.filter((id) => id !== postId) : [...current, postId],
@@ -196,22 +326,12 @@ export default function CommunityScreen() {
     const content = commentText.trim();
     if (!selectedPost || !content) return;
 
-    updatePost(selectedPost.id, (post) => ({
-      ...post,
-      comments: [
-        ...post.comments,
-        {
-          id: Date.now(),
-          author: '나',
-          content,
-          createdAt: '방금 전',
-          createdAtMs: Date.now(),
-          liked: false,
-          likeCount: 0,
-        },
-      ],
-    }));
-    setCommentText('');
+    void createCommunityComment(selectedPost.id, content)
+      .then((comment) => {
+        updatePost(selectedPost.id, (post) => ({ ...post, comments: [...post.comments, toComment(comment)] }));
+        setCommentText('');
+      })
+      .catch(() => Alert.alert('댓글 등록 실패', '로그인 상태와 서버 연결을 확인해주세요.'));
   };
 
   const toggleCommentLike = (postId: number, commentId: number) => {
@@ -230,28 +350,22 @@ export default function CommunityScreen() {
   };
 
   const addDraftMedia = (type: MediaType) => {
-    setDraft((current) => {
-      if (current.media.length >= MAX_MEDIA_COUNT) {
-        Alert.alert('첨부 개수 제한', `사진과 동영상은 합쳐서 최대 ${MAX_MEDIA_COUNT}개까지 추가할 수 있어요.`);
-        return current;
-      }
-
-      const presetList = MEDIA_PRESETS[type];
-      const sameTypeCount = current.media.filter((item) => item.type === type).length;
-      const preset = presetList[sameTypeCount % presetList.length];
-
-      return {
+    if (type !== 'image') return;
+    void ImagePicker.launchImageLibraryAsync({
+      mediaTypes: ['images'],
+      allowsMultipleSelection: true,
+      selectionLimit: MAX_MEDIA_COUNT,
+      quality: 0.85,
+    }).then((result) => {
+      if (result.canceled) return;
+      setDraft((current) => ({
         ...current,
-        media: [
-          ...current.media,
-          {
-            id: Date.now() + current.media.length,
-            type,
-            uri: preset.uri,
-            originalUri: preset.originalUri,
-          },
-        ],
-      };
+        media: [...current.media, ...result.assets.map((asset, index) => ({
+          id: Date.now() + index,
+          type: 'image' as const,
+          uri: asset.uri,
+        }))].slice(0, MAX_MEDIA_COUNT),
+      }));
     });
   };
 
@@ -263,9 +377,10 @@ export default function CommunityScreen() {
   };
 
   const submitPost = () => {
+    const title = draft.title.trim();
     const content = draft.content.trim();
-    if (!content) {
-      Alert.alert('내용을 입력해주세요', '커뮤니티에 공유할 여행 이야기를 적어주세요.');
+    if (!title || !content) {
+      Alert.alert('내용을 입력해주세요', '게시글 제목과 내용을 입력해주세요.');
       return;
     }
 
@@ -273,72 +388,54 @@ export default function CommunityScreen() {
       .split(/[\s,]+/)
       .map((tag) => tag.trim().replace(/^#/, ''))
       .filter(Boolean);
-    const course = MY_TRAVEL_COURSES.find((item) => item.id === draft.courseId);
     const media = draft.media;
 
-    if (editingPost) {
-      updatePost(editingPost.id, (post) => ({
-        ...post,
-        content,
-        hashtags,
-        course,
-        media,
-      }));
-      setSelectedPostId(editingPost.id);
-      setMode('detail');
-      return;
-    }
-
-    const newPost: CommunityPost = {
-      id: Date.now(),
-      author: '나',
-      avatar: 'https://images.unsplash.com/photo-1517841905240-472988babdf9?w=120&h=120&fit=crop',
-      isMine: true,
+    const payload = {
+      title,
       content,
-      media,
-      course,
+      courseId: draft.courseId,
       hashtags,
-      liked: false,
-      saved: false,
-      likeCount: 0,
-      saveCount: 0,
-      comments: [],
-      createdAt: '방금 전',
-      createdAtMs: Date.now(),
+      images: [],
     };
-
-    setPosts((current) => [newPost, ...current]);
-    setSelectedPostId(newPost.id);
-    setMode('detail');
+    void Promise.all(media.map(async (item, index) => {
+      if (item.originalUri && !item.uri.startsWith('file:') && !item.uri.startsWith('content:')) {
+        return { s3Key: item.originalUri, url: item.uri, sortOrder: index };
+      }
+      const uploaded = await uploadCommunityImage(item.uri, `community-${Date.now()}-${index}.jpg`);
+      return { ...uploaded, sortOrder: index };
+    })).then((images) => editingPost
+      ? updateCommunityPost(editingPost.id, { ...payload, images })
+      : createCommunityPost({ ...payload, images }))
+      .then((saved) => {
+        const nextPost = detailToPost(
+          saved,
+          courses,
+          editingPost ? { ...editingPost, isMine: true } : { ...summaryToPost(saved, courses), isMine: true },
+        );
+        setPosts((current) => editingPost
+          ? current.map((post) => (post.id === editingPost.id ? nextPost : post))
+          : [nextPost, ...current]);
+        setSelectedPostId(nextPost.id);
+        setMode('detail');
+      })
+      .catch(() => Alert.alert('게시글 저장 실패', '로그인 상태와 서버 연결을 확인해주세요.'));
   };
 
   const renderList = () => (
     <>
-      <CommunityHeader
-        title="커뮤니티"
-        subtitle="강원 여행 기록을 나누고 저장해보세요"
-        onWrite={openCreateForm}
-      />
+      <View style={styles.topTitleBar}>
+        <Text style={styles.topTitle}>강원동행</Text>
+      </View>
       <ScrollView
         style={styles.scroll}
+        stickyHeaderIndices={[0]}
         showsVerticalScrollIndicator={false}
-        contentContainerStyle={[styles.scrollContent, { paddingBottom: tabBarHeight + 24 }]}
+        contentContainerStyle={[styles.scrollContent, { paddingBottom: tabBarHeight + 96 }]}
       >
         <CommunityFilterBar
           hashtagSearch={hashtagSearch}
-          popularTags={popularTags}
-          period={period}
-          sort={sort}
           onChangeHashtagSearch={setHashtagSearch}
-          onToggleSearchTag={toggleSearchTag}
-          onChangePeriod={setPeriod}
-          onChangeSort={setSort}
         />
-
-        <View style={styles.resultHeader}>
-          <Text style={styles.resultTitle}>게시글 {visiblePosts.length}개</Text>
-          <Text style={styles.savedHint}>페이지당 {POST_PAGE_SIZE}개 · 관심기록 {posts.filter((post) => post.saved).length}개</Text>
-        </View>
 
         {visiblePosts.length > 0 ? (
           <>
@@ -351,7 +448,6 @@ export default function CommunityScreen() {
                 onToggleExpanded={toggleExpanded}
                 onToggleLike={toggleLike}
                 onToggleSave={toggleSave}
-                onToggleSearchTag={toggleSearchTag}
                 onOpenMedia={setSelectedMedia}
               />
             ))}
@@ -370,6 +466,9 @@ export default function CommunityScreen() {
           </View>
         )}
       </ScrollView>
+      <TouchableOpacity style={[styles.fab, { bottom: tabBarHeight + 16 }]} onPress={openCreateForm} activeOpacity={0.9} accessibilityLabel="게시글 작성">
+        <Ionicons name="create-outline" size={22} color={COLORS.white} />
+      </TouchableOpacity>
     </>
   );
 
@@ -404,13 +503,23 @@ export default function CommunityScreen() {
                   <Text style={styles.postTime}>{selectedPost.createdAt}</Text>
                 </View>
                 {selectedPost.isMine ? (
-                  <TouchableOpacity onPress={() => openEditForm(selectedPost)} style={styles.editButton}>
-                    <Ionicons name="pencil-outline" size={16} color={COLORS.primary} />
-                    <Text style={styles.editButtonText}>수정</Text>
-                  </TouchableOpacity>
+                  <View style={styles.ownerActions}>
+                    <TouchableOpacity onPress={() => openEditForm(selectedPost)} style={styles.editButton}>
+                      <Ionicons name="pencil-outline" size={16} color={COLORS.primary} />
+                      <Text style={styles.editButtonText}>수정</Text>
+                    </TouchableOpacity>
+                    <TouchableOpacity
+                      onPress={() => deletePost(selectedPost.id)}
+                      style={styles.deleteButton}
+                      accessibilityLabel="게시글 삭제"
+                    >
+                      <Ionicons name="trash-outline" size={16} color={COLORS.red} />
+                    </TouchableOpacity>
+                  </View>
                 ) : null}
               </View>
 
+              {selectedPost.title ? <Text style={styles.detailTitle}>{selectedPost.title}</Text> : null}
               <Text style={styles.detailContent} numberOfLines={expanded ? undefined : 5}>
                 {selectedPost.content}
               </Text>
@@ -468,7 +577,7 @@ export default function CommunityScreen() {
       />
       <CommunityPostForm
         draft={draft}
-        courses={MY_TRAVEL_COURSES}
+        courses={courses}
         isEditing={Boolean(editingPost)}
         bottomPadding={tabBarHeight + 24}
         onChangeDraft={setDraft}
@@ -494,16 +603,18 @@ export default function CommunityScreen() {
 const styles = StyleSheet.create({
   safe: {
     flex: 1,
-    backgroundColor: COLORS.bg,
+    backgroundColor: '#F5F7F8',
   },
   flex: {
     flex: 1,
   },
   scroll: {
     flex: 1,
+    backgroundColor: '#F5F7F8',
   },
   scrollContent: {
-    padding: 20,
+    paddingTop: 12,
+    paddingHorizontal: 20,
   },
   resultHeader: {
     flexDirection: 'row',
@@ -535,6 +646,32 @@ const styles = StyleSheet.create({
   emptyDesc: {
     color: COLORS.textMuted,
     fontSize: 13,
+  },
+  topTitleBar: {
+    backgroundColor: COLORS.primary,
+    height: 56,
+    paddingHorizontal: 16,
+    justifyContent: 'center',
+  },
+  topTitle: {
+    color: COLORS.white,
+    fontSize: 20,
+    fontWeight: '700',
+  },
+  fab: {
+    position: 'absolute',
+    right: 16,
+    width: 56,
+    height: 56,
+    borderRadius: 28,
+    backgroundColor: COLORS.primary,
+    alignItems: 'center',
+    justifyContent: 'center',
+    shadowColor: '#000',
+    shadowOpacity: 0.16,
+    shadowRadius: 8,
+    shadowOffset: { width: 0, height: 3 },
+    elevation: 4,
   },
   detailCard: {
     backgroundColor: COLORS.white,
@@ -577,6 +714,19 @@ const styles = StyleSheet.create({
     backgroundColor: COLORS.primaryLight,
     paddingHorizontal: 10,
   },
+  ownerActions: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+  },
+  deleteButton: {
+    width: 34,
+    height: 34,
+    borderRadius: 9,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: '#FEF2F2',
+  },
   editButtonText: {
     color: COLORS.primaryDark,
     fontSize: 12,
@@ -586,6 +736,13 @@ const styles = StyleSheet.create({
     color: COLORS.text,
     fontSize: 16,
     lineHeight: 24,
+  },
+  detailTitle: {
+    color: COLORS.text,
+    fontSize: 20,
+    fontWeight: '900',
+    lineHeight: 28,
+    marginBottom: 10,
   },
   moreText: {
     color: COLORS.primary,

@@ -154,6 +154,7 @@ export const MEDIA_PRESETS: Record<MediaType, Array<{ uri: string; originalUri: 
 };
 
 export const EMPTY_DRAFT_POST: DraftPost = {
+  title: '',
   content: '',
   hashtags: '',
   media: [],
