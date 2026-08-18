@@ -122,6 +122,8 @@ function buildCandidates() {
   return unique([
     envBaseUrl ? normalizeBaseUrl(envBaseUrl) : null,
     bundlerHost ? `http://${bundlerHost}:8080` : null,
+    // 실제 휴대폰에서 PC의 Docker 백엔드에 접근하기 위한 개발용 LAN 주소입니다.
+    'http://192.168.0.30:8080',
     Platform.OS === 'android' ? 'http://10.0.2.2:8080' : null,
     'http://localhost:8080',
     'http://127.0.0.1:8080',

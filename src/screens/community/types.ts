@@ -31,6 +31,7 @@ export type CommunityMedia = {
 
 export type CommunityPost = {
   id: number;
+  title?: string;
   author: string;
   avatar: string;
   isMine: boolean;
@@ -48,6 +49,7 @@ export type CommunityPost = {
 };
 
 export type DraftPost = {
+  title: string;
   content: string;
   hashtags: string;
   media: CommunityMedia[];

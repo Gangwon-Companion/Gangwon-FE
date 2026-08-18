@@ -29,7 +29,7 @@ export default function CommunityMediaViewerModal({ media, onClose }: Props) {
         {media ? (
           <View style={styles.mediaModalBody}>
             <Image
-              source={{ uri: media.originalUri ?? media.uri }}
+              source={{ uri: media.uri }}
               style={styles.mediaModalImage}
               resizeMode="contain"
             />

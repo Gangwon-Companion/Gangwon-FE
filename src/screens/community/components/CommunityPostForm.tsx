@@ -49,6 +49,16 @@ export default function CommunityPostForm({
         showsVerticalScrollIndicator={false}
         contentContainerStyle={[styles.scrollContent, { paddingBottom: bottomPadding }]}
       >
+        <Text style={styles.inputLabel}>제목</Text>
+        <TextInput
+          value={draft.title}
+          onChangeText={(title) => onChangeDraft({ ...draft, title })}
+          placeholder="게시글 제목을 입력해주세요"
+          placeholderTextColor={COLORS.textMuted}
+          style={styles.titleInput}
+          maxLength={120}
+        />
+
         <Text style={styles.inputLabel}>글 내용</Text>
         <TextInput
           value={draft.content}
@@ -70,10 +80,6 @@ export default function CommunityPostForm({
           <TouchableOpacity onPress={() => onAddMedia('image')} style={styles.attachButton}>
             <Ionicons name="image-outline" size={20} color={COLORS.primary} />
             <Text style={styles.attachText}>사진 추가</Text>
-          </TouchableOpacity>
-          <TouchableOpacity onPress={() => onAddMedia('video')} style={styles.attachButton}>
-            <Ionicons name="videocam-outline" size={20} color={COLORS.primary} />
-            <Text style={styles.attachText}>동영상 추가</Text>
           </TouchableOpacity>
         </View>
         {draft.media.length > 0 ? (
@@ -182,6 +188,17 @@ const styles = StyleSheet.create({
     fontSize: 15,
     lineHeight: 22,
     padding: 14,
+    marginBottom: 20,
+  },
+  titleInput: {
+    minHeight: 48,
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: COLORS.border,
+    backgroundColor: COLORS.white,
+    color: COLORS.text,
+    fontSize: 15,
+    paddingHorizontal: 14,
     marginBottom: 20,
   },
   attachMetaRow: {
