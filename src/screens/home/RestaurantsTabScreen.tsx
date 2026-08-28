@@ -15,8 +15,10 @@ import {
   StatusBar,
 } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
+import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { Ionicons } from '@expo/vector-icons';
 import * as Location from 'expo-location';
+import type { RootStackParamList } from '../../navigation/types';
 import { buildRequestHeaders, getApiBaseUrl } from './api';
 
 const THEME_COLOR = '#008A9A';
@@ -71,7 +73,7 @@ const formatLocationText = (restaurant: Restaurant) => {
 };
 
 export default function RestaurantsTabScreen() {
-  const navigation = useNavigation();
+  const navigation = useNavigation<NativeStackNavigationProp<RootStackParamList, 'RestaurantsTab'>>();
   const [selectedFilter, setSelectedFilter] = useState(0);
   const [searchQuery, setSearchQuery] = useState('');
   const [debouncedSearchQuery, setDebouncedSearchQuery] = useState('');
@@ -364,7 +366,17 @@ export default function RestaurantsTabScreen() {
                       </>
                     )}
                   </TouchableOpacity>
-                  <TouchableOpacity style={styles.primaryButton}>
+                  <TouchableOpacity
+                    style={styles.primaryButton}
+                    onPress={() => navigation.navigate('RestaurantDetail', {
+                      restaurantId: restaurant.restaurantId,
+                      name: restaurant.name,
+                      imageUrl: restaurant.imageUrl,
+                      menuType: restaurant.menuType,
+                      rating: restaurant.rating,
+                      region: restaurant.region,
+                    })}
+                  >
                     <Text style={styles.primaryButtonText}>상세보기</Text>
                   </TouchableOpacity>
                 </View>

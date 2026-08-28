@@ -351,7 +351,16 @@ export default function HotelsTabScreen() {
                       </>
                     )}
                   </TouchableOpacity>
-                  <TouchableOpacity style={styles.primaryButton}>
+                  <TouchableOpacity
+                    style={styles.primaryButton}
+                    onPress={() => navigation.navigate('HotelDetail', {
+                      lodgingId: hotel.lodgingId,
+                      name: hotel.name,
+                      imageUrl: hotel.imageUrl,
+                      rating: hotel.rating,
+                      region: hotel.region,
+                    })}
+                  >
                     <Text style={styles.primaryButtonText}>상세보기</Text>
                   </TouchableOpacity>
                 </View>
