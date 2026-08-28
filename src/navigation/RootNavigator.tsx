@@ -11,6 +11,8 @@ import ThemeDestinationListScreen from '../screens/home/ThemeDestinationListScre
 import DestinationDetailScreen from '../screens/home/DestinationDetailScreen';
 import HotelsTabScreen from '../screens/home/HotelsTabScreen';
 import RestaurantsTabScreen from '../screens/home/RestaurantsTabScreen';
+import HotelDetailScreen from '../screens/home/HotelDetailScreen';
+import RestaurantDetailScreen from '../screens/home/RestaurantDetailScreen';
 import HotelNavigationScreen from '../screens/travel/HotelNavigationScreen';
 import { RootStackParamList } from './types';
 
@@ -31,7 +33,9 @@ export default function RootNavigator() {
       <Stack.Screen name="ThemeDestinations" component={ThemeDestinationListScreen} />
       <Stack.Screen name="DestinationDetail" component={DestinationDetailScreen} />
       <Stack.Screen name="HotelsTab" component={HotelsTabScreen} />
+      <Stack.Screen name="HotelDetail" component={HotelDetailScreen} />
       <Stack.Screen name="RestaurantsTab" component={RestaurantsTabScreen} />
+      <Stack.Screen name="RestaurantDetail" component={RestaurantDetailScreen} />
       <Stack.Screen name="HotelNavigation" component={HotelNavigationScreen} />
     </Stack.Navigator>
   );

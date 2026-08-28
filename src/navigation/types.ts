@@ -17,7 +17,22 @@ export type RootStackParamList = {
     accessibility: boolean;
   };
   HotelsTab: undefined;
+  HotelDetail: {
+    lodgingId: number;
+    name: string;
+    imageUrl?: string | null;
+    rating?: number | null;
+    region?: string | null;
+  };
   RestaurantsTab: undefined;
+  RestaurantDetail: {
+    restaurantId: number;
+    name: string;
+    imageUrl?: string | null;
+    menuType?: string | null;
+    rating?: number | null;
+    region?: string | null;
+  };
   HotelNavigation: {
     name: string;
     location: string;
