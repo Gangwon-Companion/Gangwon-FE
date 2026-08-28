@@ -1,14 +1,135 @@
 import { useState } from 'react';
-import { Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
+import { CommonActions } from '@react-navigation/native';
+import {
+  ActivityIndicator,
+  Alert,
+  Pressable,
+  StyleSheet,
+  Text,
+  TextInput,
+  View,
+} from 'react-native';
 import { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { ArrowLeft, Eye, EyeOff, Image } from 'lucide-react-native';
 import { colors } from '../../constants/colors';
 import { RootStackParamList } from '../../navigation/types';
+import { ApiError, parseApiError, saveAccessToken } from '../../api/auth';
+import { getApiBaseUrl, requestHeaders } from '../home/api';
 
 type Props = NativeStackScreenProps<RootStackParamList, 'SignUp'>;
+const REQUEST_TIMEOUT_MS = 8000;
+type CheckStatus = 'idle' | 'checking' | 'available' | 'taken';
+
+function describeSignUpError(error: unknown) {
+  if (error instanceof ApiError && error.errors.length > 0) {
+    return error.errors.map((item) => item.message).join('\n');
+  }
+  return error instanceof Error ? error.message : '회원가입 중 오류가 발생했습니다.';
+}
 
 export default function SignUpScreen({ navigation }: Props) {
+  const [username, setUsername] = useState('');
+  const [password, setPassword] = useState('');
+  const [email, setEmail] = useState('');
+  const [nickname, setNickname] = useState('');
   const [showPassword, setShowPassword] = useState(false);
+  const [submitting, setSubmitting] = useState(false);
+  const [usernameStatus, setUsernameStatus] = useState<CheckStatus>('idle');
+
+  const checkUsernameAvailability = async () => {
+    const trimmed = username.trim();
+    if (!trimmed) {
+      Alert.alert('입력 확인', '아이디를 입력해 주세요.');
+      return;
+    }
+
+    setUsernameStatus('checking');
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
+
+    try {
+      const apiBaseUrl = await getApiBaseUrl(undefined, { skipProbe: true });
+      const response = await fetch(
+        `${apiBaseUrl}/api/v1/auth/check/username/${encodeURIComponent(trimmed)}`,
+        { headers: { ...requestHeaders, Accept: 'application/json' }, signal: controller.signal },
+      );
+
+      if (!response.ok) throw await parseApiError(response);
+      const data: { available?: unknown } = await response.json();
+      setUsernameStatus(data.available ? 'available' : 'taken');
+    } catch (error) {
+      setUsernameStatus('idle');
+      Alert.alert('중복 확인 실패', error instanceof Error ? error.message : '중복 확인 중 오류가 발생했습니다.');
+    } finally {
+      clearTimeout(timeout);
+    }
+  };
+
+  const submitSignUp = async () => {
+    const trimmedUsername = username.trim();
+    const trimmedEmail = email.trim();
+    const trimmedNickname = nickname.trim();
+
+    if (!trimmedUsername || !password || !trimmedEmail || !trimmedNickname) {
+      Alert.alert('입력 확인', '모든 항목을 입력해 주세요.');
+      return;
+    }
+    if (usernameStatus !== 'available') {
+      Alert.alert('입력 확인', '아이디 중복확인을 먼저 완료해 주세요.');
+      return;
+    }
+
+    setSubmitting(true);
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
+
+    try {
+      const apiBaseUrl = await getApiBaseUrl(undefined, { skipProbe: true });
+      const signUpResponse = await fetch(`${apiBaseUrl}/api/v1/auth/signup`, {
+        method: 'POST',
+        headers: { ...requestHeaders, Accept: 'application/json', 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          username: trimmedUsername,
+          password,
+          email: trimmedEmail,
+          nickname: trimmedNickname,
+        }),
+        signal: controller.signal,
+      });
+      if (!signUpResponse.ok) throw await parseApiError(signUpResponse);
+
+      const loginResponse = await fetch(`${apiBaseUrl}/api/v1/auth/login`, {
+        method: 'POST',
+        headers: { ...requestHeaders, Accept: 'application/json', 'Content-Type': 'application/json' },
+        body: JSON.stringify({ username: trimmedUsername, password }),
+        signal: controller.signal,
+      });
+      if (!loginResponse.ok) throw await parseApiError(loginResponse);
+
+      const loginData: { token?: unknown } = await loginResponse.json();
+      if (typeof loginData.token !== 'string' || !loginData.token) {
+        throw new Error('로그인 응답에 토큰이 없습니다.');
+      }
+
+      await saveAccessToken(loginData.token);
+      navigation.dispatch(
+        CommonActions.reset({
+          index: 0,
+          routes: [{ name: 'Main' }],
+        }),
+      );
+    } catch (error) {
+      Alert.alert('회원가입 실패', describeSignUpError(error));
+    } finally {
+      clearTimeout(timeout);
+      setSubmitting(false);
+    }
+  };
+
+  const usernameButtonLabel =
+    usernameStatus === 'checking' ? '확인 중' :
+    usernameStatus === 'available' ? '사용 가능' :
+    usernameStatus === 'taken' ? '중복됨' : '중복확인';
 
   return (
     <View style={styles.pageWrap}>
@@ -29,9 +150,22 @@ export default function SignUpScreen({ navigation }: Props) {
                 placeholder="아이디를 입력하세요"
                 placeholderTextColor={colors.gray400}
                 autoCapitalize="none"
+                autoCorrect={false}
+                value={username}
+                onChangeText={(value) => {
+                  setUsername(value);
+                  setUsernameStatus('idle');
+                }}
+                editable={!submitting}
               />
-              <Pressable style={styles.subButton}>
-                <Text style={styles.subButtonText}>중복확인</Text>
+              <Pressable
+                style={styles.subButton}
+                onPress={() => void checkUsernameAvailability()}
+                disabled={submitting || usernameStatus === 'checking'}
+              >
+                {usernameStatus === 'checking'
+                  ? <ActivityIndicator color={colors.primary} size="small" />
+                  : <Text style={styles.subButtonText}>{usernameButtonLabel}</Text>}
               </Pressable>
             </View>
           </View>
@@ -44,6 +178,9 @@ export default function SignUpScreen({ navigation }: Props) {
                 placeholder="비밀번호를 입력하세요"
                 placeholderTextColor={colors.gray400}
                 secureTextEntry={!showPassword}
+                value={password}
+                onChangeText={setPassword}
+                editable={!submitting}
               />
               <Pressable onPress={() => setShowPassword((prev) => !prev)}>
                 {showPassword ? (
@@ -58,18 +195,17 @@ export default function SignUpScreen({ navigation }: Props) {
 
           <View>
             <Text style={styles.label}>이메일</Text>
-            <View style={styles.inlineRow}>
-              <TextInput
-                style={[styles.input, styles.flexInput]}
-                placeholder="your@email.com"
-                placeholderTextColor={colors.gray400}
-                autoCapitalize="none"
-                keyboardType="email-address"
-              />
-              <Pressable style={styles.subButton}>
-                <Text style={styles.subButtonText}>인증</Text>
-              </Pressable>
-            </View>
+            <TextInput
+              style={styles.input}
+              placeholder="your@email.com"
+              placeholderTextColor={colors.gray400}
+              autoCapitalize="none"
+              autoCorrect={false}
+              keyboardType="email-address"
+              value={email}
+              onChangeText={setEmail}
+              editable={!submitting}
+            />
           </View>
 
           <View>
@@ -78,6 +214,9 @@ export default function SignUpScreen({ navigation }: Props) {
               style={styles.input}
               placeholder="닉네임을 입력하세요"
               placeholderTextColor={colors.gray400}
+              value={nickname}
+              onChangeText={setNickname}
+              editable={!submitting}
             />
           </View>
         </View>
@@ -95,8 +234,14 @@ export default function SignUpScreen({ navigation }: Props) {
           </Pressable>
         </View>
 
-        <Pressable style={styles.primaryButton} onPress={() => navigation.replace('Main')}>
-          <Text style={styles.primaryButtonText}>회원가입</Text>
+        <Pressable
+          style={({ pressed }) => [styles.primaryButton, (pressed || submitting) && styles.buttonPressed]}
+          onPress={() => void submitSignUp()}
+          disabled={submitting}
+        >
+          {submitting
+            ? <ActivityIndicator color={colors.white} />
+            : <Text style={styles.primaryButtonText}>회원가입</Text>}
         </Pressable>
       </View>
     </View>
@@ -244,5 +389,8 @@ const styles = StyleSheet.create({
     color: colors.white,
     fontSize: 16,
     fontWeight: '700',
+  },
+  buttonPressed: {
+    opacity: 0.82,
   },
 });
