@@ -1,6 +1,7 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   ActivityIndicator,
+  Alert,
   Image,
   Linking,
   NativeScrollEvent,
@@ -18,7 +19,16 @@ import { Ionicons } from '@expo/vector-icons';
 import { NativeStackScreenProps } from '@react-navigation/native-stack';
 
 import { RootStackParamList } from '../../navigation/types';
-import { ApiResponseError, DestinationDetail, fetchDestinationDetail } from './api';
+import {
+  ApiResponseError,
+  createPlaceReview,
+  deletePlaceReview,
+  DestinationDetail,
+  fetchDestinationDetail,
+  ReviewPayload,
+  updatePlaceReview,
+} from './api';
+import ReviewSection from './components/ReviewSection';
 
 type Props = NativeStackScreenProps<RootStackParamList, 'DestinationDetail'>;
 
@@ -95,6 +105,7 @@ export default function DestinationDetailScreen({ navigation, route }: Props) {
   const [detailUnavailable, setDetailUnavailable] = useState(false);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [reviewSubmitting, setReviewSubmitting] = useState(false);
 
   const loadDetail = useCallback(async (signal?: AbortSignal) => {
     setLoading(true);
@@ -172,6 +183,9 @@ export default function DestinationDetailScreen({ navigation, route }: Props) {
   }, [detail, firstImage]);
 
   const displayTitle = detail?.title ?? title;
+  const displayRating = detail?.rating ?? null;
+  const reviews = detail?.reviews ?? [];
+  const reviewCount = detail?.reviewCount ?? reviews.length;
   const address = [detail?.addr1, detail?.addr2].map(normalizeText).filter(Boolean).join(' ');
   const homepageUrl = extractUrl(detail?.homepage);
   const hasBasicInfo = Boolean(
@@ -188,6 +202,35 @@ export default function DestinationDetailScreen({ navigation, route }: Props) {
     const nextIndex = Math.max(0, Math.min(imageUrls.length - 1, rawIndex));
     setImageIndex(nextIndex);
   };
+
+  const runReviewAction = async (action: () => Promise<void>) => {
+    setReviewSubmitting(true);
+    try {
+      await action();
+      await loadDetail();
+    } catch (reviewError) {
+      const message = reviewError instanceof ApiResponseError && reviewError.status === 401
+        ? '로그인 후 이용할 수 있습니다.'
+        : reviewError instanceof Error
+          ? reviewError.message
+          : '리뷰 요청 처리 중 오류가 발생했습니다.';
+      Alert.alert('리뷰 처리 실패', message);
+    } finally {
+      setReviewSubmitting(false);
+    }
+  };
+
+  const createReview = (payload: ReviewPayload) => (
+    runReviewAction(() => createPlaceReview('destinations', destinationId, payload).then(() => undefined))
+  );
+
+  const updateReview = (reviewId: number, payload: ReviewPayload) => (
+    runReviewAction(() => updatePlaceReview('destinations', destinationId, reviewId, payload).then(() => undefined))
+  );
+
+  const deleteReview = (reviewId: number) => (
+    runReviewAction(() => deletePlaceReview('destinations', destinationId, reviewId))
+  );
 
   return (
     <SafeAreaView style={styles.safeArea} edges={['top']}>
@@ -274,6 +317,16 @@ export default function DestinationDetailScreen({ navigation, route }: Props) {
                   <Text style={styles.inlineInfoText}>{address}</Text>
                 </View>
               ) : null}
+              <View style={styles.badgeRow}>
+                <View style={styles.badge}>
+                  <Ionicons name="star" size={14} color="#EAB308" />
+                  <Text style={styles.badgeText}>{displayRating?.toFixed(1) ?? '-'}</Text>
+                </View>
+                <View style={styles.badge}>
+                  <Ionicons name="chatbubble-outline" size={14} color={COLORS.primary} />
+                  <Text style={styles.badgeText}>{reviewCount}개 리뷰</Text>
+                </View>
+              </View>
             </View>
 
             {(pet || accessibility) && (
@@ -329,6 +382,17 @@ export default function DestinationDetailScreen({ navigation, route }: Props) {
                 <EmptySectionText>등록된 기본 정보가 없습니다.</EmptySectionText>
               )}
             </View>
+
+            {detail ? (
+              <ReviewSection
+                reviews={reviews}
+                reviewCount={reviewCount}
+                submitting={reviewSubmitting}
+                onCreate={createReview}
+                onUpdate={updateReview}
+                onDelete={deleteReview}
+              />
+            ) : null}
 
             {pet && (
               <View style={styles.section}>
@@ -513,6 +577,27 @@ const styles = StyleSheet.create({
     color: COLORS.textSub,
     fontSize: 14,
     lineHeight: 20,
+  },
+  badgeRow: {
+    flexDirection: 'row',
+    gap: 8,
+    marginTop: 12,
+  },
+  badge: {
+    minHeight: 32,
+    borderRadius: 999,
+    backgroundColor: COLORS.white,
+    borderWidth: 1,
+    borderColor: COLORS.border,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 5,
+    paddingHorizontal: 11,
+  },
+  badgeText: {
+    color: COLORS.textSub,
+    fontSize: 12,
+    fontWeight: '700',
   },
   filterSummary: {
     flexDirection: 'row',

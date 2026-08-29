@@ -21,6 +21,8 @@ export type DestinationListItem = {
   id: number;
   title: string;
   firstImage: string | null;
+  rating?: number | null;
+  reviewCount?: number;
 };
 
 export type ThemeDestinationsResponse = {
@@ -80,6 +82,24 @@ export type DestinationDetail = {
   destinationImageList: DestinationImage[];
   petInfo: PetInfo | null;
   accessibilityInfo: AccessibilityInfo | null;
+  rating?: number | null;
+  reviewCount?: number;
+  reviews?: PlaceReview[];
+};
+
+export type PlaceReview = {
+  reviewId: number;
+  nickname: string;
+  content: string;
+  rating: number;
+  createdAt: string;
+};
+
+export type ReviewResource = 'destinations' | 'restaurants' | 'lodgings';
+
+export type ReviewPayload = {
+  content: string;
+  rating: number;
 };
 
 let cachedBaseUrl: string | null = null;
@@ -278,6 +298,78 @@ export async function fetchDestinationDetail(
   }
 
   return response.json() as Promise<DestinationDetail>;
+}
+
+async function parseReviewError(response: Response) {
+  try {
+    const body = await response.json();
+    if (typeof body?.message === 'string') return body.message;
+  } catch {
+    // JSON 형식이 아닌 오류 응답은 상태 코드 기반 메시지를 사용한다.
+  }
+
+  return `리뷰 요청 실패 (${response.status})`;
+}
+
+export async function createPlaceReview(
+  resource: ReviewResource,
+  resourceId: number,
+  payload: ReviewPayload,
+) {
+  const apiBaseUrl = await getApiBaseUrl();
+  const response = await fetch(`${apiBaseUrl}/api/v1/${resource}/${resourceId}/reviews`, {
+    method: 'POST',
+    headers: {
+      ...await buildRequestHeaders(),
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify(payload),
+  });
+
+  if (!response.ok) {
+    throw new ApiResponseError(await parseReviewError(response), response.status);
+  }
+
+  return response.json() as Promise<PlaceReview>;
+}
+
+export async function updatePlaceReview(
+  resource: ReviewResource,
+  resourceId: number,
+  reviewId: number,
+  payload: ReviewPayload,
+) {
+  const apiBaseUrl = await getApiBaseUrl();
+  const response = await fetch(`${apiBaseUrl}/api/v1/${resource}/${resourceId}/reviews/${reviewId}`, {
+    method: 'PATCH',
+    headers: {
+      ...await buildRequestHeaders(),
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify(payload),
+  });
+
+  if (!response.ok) {
+    throw new ApiResponseError(await parseReviewError(response), response.status);
+  }
+
+  return response.json() as Promise<PlaceReview>;
+}
+
+export async function deletePlaceReview(
+  resource: ReviewResource,
+  resourceId: number,
+  reviewId: number,
+) {
+  const apiBaseUrl = await getApiBaseUrl();
+  const response = await fetch(`${apiBaseUrl}/api/v1/${resource}/${resourceId}/reviews/${reviewId}`, {
+    method: 'DELETE',
+    headers: await buildRequestHeaders(),
+  });
+
+  if (!response.ok) {
+    throw new ApiResponseError(await parseReviewError(response), response.status);
+  }
 }
 
 export { requestHeaders };

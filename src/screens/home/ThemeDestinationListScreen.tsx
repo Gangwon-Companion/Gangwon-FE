@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useMemo, useState } from 'react';
 import {
   ActivityIndicator,
   Image,
@@ -12,9 +12,10 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { NativeStackScreenProps } from '@react-navigation/native-stack';
+import { useFocusEffect } from '@react-navigation/native';
 
 import { RootStackParamList } from '../../navigation/types';
-import { DestinationListItem, fetchThemeDestinations } from './api';
+import { ApiResponseError, DestinationListItem, fetchDestinationDetail, fetchThemeDestinations } from './api';
 
 type Props = NativeStackScreenProps<RootStackParamList, 'ThemeDestinations'>;
 
@@ -32,9 +33,14 @@ const COLORS = {
   red: '#EF4444',
 };
 
+type DestinationListItemWithReview = DestinationListItem & {
+  rating: number | null;
+  reviewCount: number;
+};
+
 export default function ThemeDestinationListScreen({ navigation, route }: Props) {
   const { themeId, themeName } = route.params;
-  const [destinations, setDestinations] = useState<DestinationListItem[]>([]);
+  const [destinations, setDestinations] = useState<DestinationListItemWithReview[]>([]);
   const [pet, setPet] = useState(false);
   const [accessibility, setAccessibility] = useState(false);
   const [page, setPage] = useState(1);
@@ -58,7 +64,53 @@ export default function ThemeDestinationListScreen({ navigation, route }: Props)
         signal,
       });
       if (signal?.aborted) return;
-      setDestinations(data.destinationList);
+      const hydratedDestinations = await Promise.all(
+        data.destinationList.map(async (destination): Promise<DestinationListItemWithReview> => {
+          try {
+            const detail = await fetchDestinationDetail(destination.id, {
+              pet,
+              accessibility,
+              signal,
+            });
+            return {
+              ...destination,
+              rating: detail.rating ?? destination.rating ?? null,
+              reviewCount: detail.reviewCount ?? detail.reviews?.length ?? destination.reviewCount ?? 0,
+            };
+          } catch (detailError) {
+            const shouldFallback =
+              detailError instanceof ApiResponseError
+              && detailError.status === 404
+              && (pet || accessibility);
+
+            if (shouldFallback) {
+              try {
+                const detail = await fetchDestinationDetail(destination.id, {
+                  pet: false,
+                  accessibility: false,
+                  signal,
+                });
+                return {
+                  ...destination,
+                  rating: detail.rating ?? destination.rating ?? null,
+                  reviewCount: detail.reviewCount ?? detail.reviews?.length ?? destination.reviewCount ?? 0,
+                };
+              } catch {
+                // 상세 데이터가 아직 없으면 목록 데이터만 사용한다.
+              }
+            }
+
+            return {
+              ...destination,
+              rating: destination.rating ?? null,
+              reviewCount: destination.reviewCount ?? 0,
+            };
+          }
+        }),
+      );
+
+      if (signal?.aborted) return;
+      setDestinations(hydratedDestinations);
       setPage(1);
     } catch (loadError) {
       if (signal?.aborted) return;
@@ -68,12 +120,12 @@ export default function ThemeDestinationListScreen({ navigation, route }: Props)
     }
   }, [accessibility, pet, themeId]);
 
-  useEffect(() => {
+  useFocusEffect(useCallback(() => {
     const controller = new AbortController();
     void loadDestinations(controller.signal);
 
     return () => controller.abort();
-  }, [loadDestinations]);
+  }, [loadDestinations]));
 
   const openDetail = useCallback((destination: DestinationListItem) => {
     navigation.navigate('DestinationDetail', {
@@ -201,6 +253,11 @@ export default function ThemeDestinationListScreen({ navigation, route }: Props)
             )}
             <View style={styles.cardBody}>
               <Text style={styles.destinationTitle}>{destination.title}</Text>
+              <View style={styles.ratingRow}>
+                <Ionicons name="star" size={14} color="#EAB308" />
+                <Text style={styles.ratingText}>{destination.rating?.toFixed(1) ?? '-'}</Text>
+                <Text style={styles.reviewText}>({destination.reviewCount}개 리뷰)</Text>
+              </View>
             </View>
           </TouchableOpacity>
         ))}
@@ -381,6 +438,21 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontWeight: '700',
     lineHeight: 22,
+  },
+  ratingRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    marginTop: 10,
+  },
+  ratingText: {
+    color: COLORS.text,
+    fontSize: 13,
+    fontWeight: '700',
+  },
+  reviewText: {
+    color: COLORS.textMuted,
+    fontSize: 12,
   },
   pagination: {
     minHeight: 44,

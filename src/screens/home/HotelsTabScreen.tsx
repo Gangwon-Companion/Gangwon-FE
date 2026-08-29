@@ -14,7 +14,7 @@ import {
   TouchableOpacity,
   View,
 } from 'react-native';
-import { useNavigation } from '@react-navigation/native';
+import { useFocusEffect, useNavigation } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { Ionicons } from '@expo/vector-icons';
 import * as Location from 'expo-location';
@@ -30,14 +30,11 @@ const NAVER_MAP_STORE_URL = Platform.select({
   default: 'https://map.naver.com',
 });
 
-const filters = ['전체 지역', '10만원 이하', '10-20만원', '20만원 이상', '4성급 이상'];
-
 type LodgingListItem = {
   lodgingId: number;
   name: string;
   thumbnailUrl: string | null;
   region: string | null;
-  price: number | null;
   rating: number | null;
 };
 
@@ -49,6 +46,8 @@ type LodgingListResponse = {
 type LodgingDetailResponse = {
   photos: string[];
   reviews: unknown[];
+  rating: number | null;
+  reviewCount?: number;
   location: {
     latitude: number | null;
     longitude: number | null;
@@ -75,7 +74,6 @@ const formatLocationText = (hotel: Hotel) => {
 
 export default function HotelsTabScreen() {
   const navigation = useNavigation<NativeStackNavigationProp<RootStackParamList, 'HotelsTab'>>();
-  const [selectedFilter, setSelectedFilter] = useState(0);
   const [searchQuery, setSearchQuery] = useState('');
   const [debouncedSearchQuery, setDebouncedSearchQuery] = useState('');
   const [hotels, setHotels] = useState<Hotel[]>([]);
@@ -117,7 +115,8 @@ export default function HotelsTabScreen() {
               address: detail.location.address,
               latitude: detail.location.latitude,
               longitude: detail.location.longitude,
-              reviewCount: detail.reviews.length,
+              rating: detail.rating ?? item.rating,
+              reviewCount: detail.reviewCount ?? detail.reviews.length,
               imageUrl: item.thumbnailUrl ?? detail.photos[0] ?? null,
             };
           } catch {
@@ -152,22 +151,12 @@ export default function HotelsTabScreen() {
     return () => clearTimeout(timer);
   }, [searchQuery]);
 
-  useEffect(() => {
+  useFocusEffect(useCallback(() => {
     const controller = new AbortController();
     void loadHotels(controller.signal);
 
     return () => controller.abort();
-  }, [loadHotels]);
-
-  const displayedHotels = useMemo(() => {
-    return hotels.filter((hotel) => {
-      if (selectedFilter === 1) return hotel.price !== null && hotel.price <= 100000;
-      if (selectedFilter === 2) return hotel.price !== null && hotel.price > 100000 && hotel.price <= 200000;
-      if (selectedFilter === 3) return hotel.price !== null && hotel.price > 200000;
-      if (selectedFilter === 4) return hotel.rating !== null && hotel.rating >= 4;
-      return true;
-    });
-  }, [hotels, selectedFilter]);
+  }, [loadHotels]));
 
   const openNaverDirections = async (hotel: Hotel) => {
     if (hotel.latitude === null || hotel.longitude === null) {
@@ -219,7 +208,7 @@ export default function HotelsTabScreen() {
         <TouchableOpacity onPress={() => navigation.goBack()} style={styles.backButton}>
           <Ionicons name="arrow-back" size={24} color="#fff" />
         </TouchableOpacity>
-        <Text style={styles.headerTitle}>호텔</Text>
+        <Text style={styles.headerTitle}>숙소</Text>
       </View>
 
       <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={styles.scrollContent}>
@@ -248,41 +237,12 @@ export default function HotelsTabScreen() {
           </View>
         </View>
 
-        <View style={styles.filterContainer}>
-          <ScrollView
-            horizontal
-            showsHorizontalScrollIndicator={false}
-            contentContainerStyle={styles.filterRow}
-            style={styles.filterScroll}
-          >
-            {filters.map((filter, index) => (
-              <TouchableOpacity
-                key={filter}
-                onPress={() => setSelectedFilter(index)}
-                style={[
-                  styles.filterChip,
-                  selectedFilter === index ? styles.filterChipActive : styles.filterChipInactive,
-                ]}
-              >
-                <Text
-                  style={[
-                    styles.filterChipText,
-                    selectedFilter === index ? styles.filterChipTextActive : styles.filterChipTextInactive,
-                  ]}
-                >
-                  {filter}
-                </Text>
-              </TouchableOpacity>
-            ))}
-          </ScrollView>
-        </View>
-
         <View style={styles.content}>
           <View style={styles.resultHeader}>
             <Text style={styles.sectionTitle}>
-              {debouncedSearchQuery ? '검색 결과' : '숙박 가능한 호텔'}
+              {debouncedSearchQuery ? '검색 결과' : '숙소 목록'}
             </Text>
-            <Text style={styles.resultCount}>{totalCount}개 호텔</Text>
+            <Text style={styles.resultCount}>{totalCount}개 숙소</Text>
           </View>
 
           {loading && <ActivityIndicator size="large" color={THEME_COLOR} style={styles.loading} />}
@@ -296,13 +256,13 @@ export default function HotelsTabScreen() {
             </View>
           )}
 
-          {!loading && !error && displayedHotels.length === 0 && (
+          {!loading && !error && hotels.length === 0 && (
             <Text style={styles.emptyText}>
               {searchQuery.trim() ? '검색 결과가 없습니다.' : '조건에 맞는 숙소가 없습니다.'}
             </Text>
           )}
 
-          {displayedHotels.map((hotel) => (
+          {hotels.map((hotel) => (
             <View key={hotel.lodgingId} style={styles.card}>
               {hotel.imageUrl ? (
                 <Image source={{ uri: hotel.imageUrl }} style={styles.cardImage} />
@@ -314,12 +274,6 @@ export default function HotelsTabScreen() {
               <View style={styles.cardBody}>
                 <View style={styles.cardTitleRow}>
                   <Text style={styles.cardTitle}>{hotel.name}</Text>
-                  <View style={styles.priceBlock}>
-                    <Text style={styles.cardPrice}>
-                      {hotel.price === null ? '가격 문의' : `${hotel.price.toLocaleString()}원`}
-                    </Text>
-                    <Text style={styles.cardPriceNote}>1박 기준</Text>
-                  </View>
                 </View>
 
                 <View style={styles.locationBlock}>
@@ -418,47 +372,6 @@ const styles = StyleSheet.create({
     fontSize: 14,
     paddingVertical: 0,
   },
-  filterContainer: {
-    marginTop: 16,
-    height: 40,
-    flexGrow: 0,
-    flexShrink: 0,
-  },
-  filterScroll: {
-    height: 40,
-    flexGrow: 0,
-    flexShrink: 0,
-  },
-  filterRow: {
-    paddingHorizontal: 16,
-    gap: 8,
-    height: 40,
-    alignItems: 'center',
-  },
-  filterChip: {
-    height: 36,
-    paddingHorizontal: 16,
-    borderRadius: 20,
-    alignItems: 'center',
-    justifyContent: 'center',
-    flexGrow: 0,
-    flexShrink: 0,
-  },
-  filterChipActive: {
-    backgroundColor: THEME_COLOR,
-  },
-  filterChipInactive: {
-    backgroundColor: '#fff',
-  },
-  filterChipText: {
-    fontSize: 14,
-  },
-  filterChipTextActive: {
-    color: '#fff',
-  },
-  filterChipTextInactive: {
-    color: '#6B7280',
-  },
   content: {
     paddingHorizontal: 16,
     paddingTop: 20,
@@ -544,19 +457,6 @@ const styles = StyleSheet.create({
     color: '#1F2933',
     flex: 1,
     marginRight: 8,
-  },
-  priceBlock: {
-    alignItems: 'flex-end',
-  },
-  cardPrice: {
-    fontSize: 16,
-    fontWeight: '700',
-    color: THEME_COLOR,
-  },
-  cardPriceNote: {
-    fontSize: 11,
-    color: '#9CA3AF',
-    marginTop: 2,
   },
   locationBlock: {
     flexDirection: 'row',

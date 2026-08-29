@@ -21,24 +21,27 @@ import { NativeStackScreenProps } from '@react-navigation/native-stack';
 import * as Location from 'expo-location';
 
 import { RootStackParamList } from '../../navigation/types';
-import { getApiBaseUrl, requestHeaders } from './api';
+import {
+  ApiResponseError,
+  createPlaceReview,
+  deletePlaceReview,
+  getApiBaseUrl,
+  PlaceReview,
+  requestHeaders,
+  ReviewPayload,
+  updatePlaceReview,
+} from './api';
+import ReviewSection from './components/ReviewSection';
 
 type Props = NativeStackScreenProps<RootStackParamList, 'HotelDetail'>;
 const PAGE_HORIZONTAL_PADDING = 40;
-
-type LodgingReview = {
-  reviewId: number;
-  nickname: string;
-  content: string;
-  rating: number;
-  createdAt: string;
-};
 
 type LodgingDetailResponse = {
   lodgingId?: number;
   name?: string | null;
   photos?: string[];
-  reviews?: LodgingReview[];
+  reviews?: PlaceReview[];
+  reviewCount?: number;
   rating?: number | null;
   region?: string | null;
   description?: string | null;
@@ -88,22 +91,6 @@ function InfoRow({ label, value }: { label: string; value?: string | number | nu
   );
 }
 
-function ReviewCard({ review }: { review: LodgingReview }) {
-  return (
-    <View style={styles.reviewCard}>
-      <View style={styles.reviewHeader}>
-        <Text style={styles.reviewNickname}>{review.nickname}</Text>
-        <View style={styles.reviewRating}>
-          <Ionicons name="star" size={13} color="#EAB308" />
-          <Text style={styles.reviewRatingText}>{review.rating.toFixed(1)}</Text>
-        </View>
-      </View>
-      <Text style={styles.reviewContent}>{review.content}</Text>
-      <Text style={styles.reviewDate}>{new Date(review.createdAt).toLocaleDateString('ko-KR')}</Text>
-    </View>
-  );
-}
-
 async function getErrorMessage(response: Response, fallback: string) {
   try {
     const data = await response.json() as ApiErrorResponse;
@@ -121,6 +108,7 @@ export default function HotelDetailScreen({ navigation, route }: Props) {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [openingMap, setOpeningMap] = useState(false);
+  const [reviewSubmitting, setReviewSubmitting] = useState(false);
   const [imageIndex, setImageIndex] = useState(0);
 
   const imageUrls = useMemo(() => {
@@ -134,6 +122,7 @@ export default function HotelDetailScreen({ navigation, route }: Props) {
   const latitude = detail?.location?.latitude ?? null;
   const longitude = detail?.location?.longitude ?? null;
   const reviews = detail?.reviews ?? [];
+  const reviewCount = detail?.reviewCount ?? reviews.length;
 
   const loadDetail = useCallback(async (signal?: AbortSignal) => {
     setLoading(true);
@@ -173,6 +162,35 @@ export default function HotelDetailScreen({ navigation, route }: Props) {
     const nextIndex = Math.max(0, Math.min(imageUrls.length - 1, rawIndex));
     setImageIndex(nextIndex);
   };
+
+  const runReviewAction = async (action: () => Promise<void>) => {
+    setReviewSubmitting(true);
+    try {
+      await action();
+      await loadDetail();
+    } catch (reviewError) {
+      const message = reviewError instanceof ApiResponseError && reviewError.status === 401
+        ? '로그인 후 이용할 수 있습니다.'
+        : reviewError instanceof Error
+          ? reviewError.message
+          : '리뷰 요청 처리 중 오류가 발생했습니다.';
+      Alert.alert('리뷰 처리 실패', message);
+    } finally {
+      setReviewSubmitting(false);
+    }
+  };
+
+  const createReview = (payload: ReviewPayload) => (
+    runReviewAction(() => createPlaceReview('lodgings', lodgingId, payload).then(() => undefined))
+  );
+
+  const updateReview = (reviewId: number, payload: ReviewPayload) => (
+    runReviewAction(() => updatePlaceReview('lodgings', lodgingId, reviewId, payload).then(() => undefined))
+  );
+
+  const deleteReview = (reviewId: number) => (
+    runReviewAction(() => deletePlaceReview('lodgings', lodgingId, reviewId))
+  );
 
   const openDirections = async () => {
     if (latitude === null || longitude === null) {
@@ -284,7 +302,7 @@ export default function HotelDetailScreen({ navigation, route }: Props) {
             </View>
             <View style={styles.badge}>
               <Ionicons name="chatbubble-outline" size={14} color={COLORS.primary} />
-              <Text style={styles.badgeText}>{detail?.reviews?.length ?? 0}개 리뷰</Text>
+              <Text style={styles.badgeText}>{reviewCount}개 리뷰</Text>
             </View>
           </View>
         </View>
@@ -319,16 +337,14 @@ export default function HotelDetailScreen({ navigation, route }: Props) {
           </Text>
         </View>
 
-        <View style={styles.section}>
-          <Text style={styles.sectionTitle}>리뷰</Text>
-          {reviews.length > 0 ? (
-            <View style={styles.reviewList}>
-              {reviews.map((review) => <ReviewCard key={review.reviewId} review={review} />)}
-            </View>
-          ) : (
-            <Text style={styles.emptyText}>아직 등록된 리뷰가 없습니다.</Text>
-          )}
-        </View>
+        <ReviewSection
+          reviews={reviews}
+          reviewCount={reviewCount}
+          submitting={reviewSubmitting}
+          onCreate={createReview}
+          onUpdate={updateReview}
+          onDelete={deleteReview}
+        />
 
         <TouchableOpacity
           onPress={() => void openDirections()}
@@ -425,15 +441,6 @@ const styles = StyleSheet.create({
   infoValue: { color: COLORS.text, fontSize: 14, lineHeight: 20 },
   infoValueMuted: { color: COLORS.textMuted },
   description: { color: COLORS.textSub, fontSize: 14, lineHeight: 22 },
-  emptyText: { color: COLORS.textMuted, fontSize: 14, lineHeight: 20 },
-  reviewList: { gap: 10 },
-  reviewCard: { borderWidth: 1, borderColor: COLORS.border, borderRadius: 12, padding: 14, gap: 8 },
-  reviewHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 12 },
-  reviewNickname: { color: COLORS.text, fontSize: 14, fontWeight: '800' },
-  reviewRating: { flexDirection: 'row', alignItems: 'center', gap: 4 },
-  reviewRatingText: { color: COLORS.textSub, fontSize: 12, fontWeight: '700' },
-  reviewContent: { color: COLORS.textSub, fontSize: 14, lineHeight: 21 },
-  reviewDate: { color: COLORS.textMuted, fontSize: 12 },
   mapButton: {
     minHeight: 50,
     marginTop: 18,
