@@ -2,7 +2,7 @@ import { NativeModules, Platform } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
 const requestHeaders = { 'ngrok-skip-browser-warning': 'true' };
-const REQUEST_TIMEOUT_MS = 3500;
+const REQUEST_TIMEOUT_MS = 8000;
 const ACCESS_TOKEN_STORAGE_KEYS = [
   'accessToken',
   'ACCESS_TOKEN',
@@ -123,7 +123,6 @@ function buildCandidates() {
     envBaseUrl ? normalizeBaseUrl(envBaseUrl) : null,
     bundlerHost ? `http://${bundlerHost}:8080` : null,
     // 실제 휴대폰에서 PC의 Docker 백엔드에 접근하기 위한 개발용 LAN 주소입니다.
-    'http://192.168.0.30:8080',
     Platform.OS === 'android' ? 'http://10.0.2.2:8080' : null,
     'http://localhost:8080',
     'http://127.0.0.1:8080',
@@ -172,10 +171,13 @@ async function probeBaseUrl(baseUrl: string, signal?: AbortSignal) {
   }
 
   try {
-    await fetch(`${baseUrl}/api/v1/themes`, {
+    const response = await fetch(`${baseUrl}/api/v1/themes`, {
       headers: await buildRequestHeaders(),
       signal: controller.signal,
     });
+    if (!response.ok) {
+      throw new ApiResponseError(`API 서버 확인 실패 (${response.status})`, response.status);
+    }
     return baseUrl;
   } finally {
     clearTimeout(timeout);
