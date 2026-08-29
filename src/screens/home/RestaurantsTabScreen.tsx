@@ -14,7 +14,7 @@ import {
   SafeAreaView,
   StatusBar,
 } from 'react-native';
-import { useNavigation } from '@react-navigation/native';
+import { useFocusEffect, useNavigation } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { Ionicons } from '@expo/vector-icons';
 import * as Location from 'expo-location';
@@ -53,6 +53,8 @@ type RestaurantDetailResponse = {
   longitude: number | null;
   photos: string[];
   reviews: unknown[];
+  rating: number | null;
+  reviewCount?: number;
 };
 
 type Restaurant = RestaurantListItem & {
@@ -98,7 +100,7 @@ export default function RestaurantsTabScreen() {
         headers: await buildRequestHeaders(),
         signal,
       });
-      if (!listResponse.ok) throw new Error(`맛집 목록 요청 실패 (${listResponse.status})`);
+      if (!listResponse.ok) throw new Error(`음식점 목록 요청 실패 (${listResponse.status})`);
 
       const list: RestaurantListResponse = await listResponse.json();
       if (signal?.aborted) return;
@@ -117,7 +119,8 @@ export default function RestaurantsTabScreen() {
               address: detail.address,
               latitude: detail.latitude,
               longitude: detail.longitude,
-              reviewCount: detail.reviews.length,
+              rating: detail.rating ?? item.rating,
+              reviewCount: detail.reviewCount ?? detail.reviews.length,
               imageUrl: item.thumbnailUrl ?? detail.photos[0] ?? null,
             };
           } catch {
@@ -138,7 +141,7 @@ export default function RestaurantsTabScreen() {
       setTotalCount(list.totalCount);
     } catch (loadError) {
       if (signal?.aborted) return;
-      setError(loadError instanceof Error ? loadError.message : '맛집 정보를 불러오지 못했습니다.');
+      setError(loadError instanceof Error ? loadError.message : '음식점 정보를 불러오지 못했습니다.');
     } finally {
       if (!signal?.aborted) setLoading(false);
     }
@@ -152,12 +155,12 @@ export default function RestaurantsTabScreen() {
     return () => clearTimeout(timer);
   }, [searchQuery]);
 
-  useEffect(() => {
+  useFocusEffect(useCallback(() => {
     const controller = new AbortController();
     void loadRestaurants(controller.signal);
 
     return () => controller.abort();
-  }, [loadRestaurants]);
+  }, [loadRestaurants]));
 
   const openNaverDirections = async (restaurant: Restaurant) => {
     setOpeningRestaurantId(restaurant.restaurantId);
@@ -169,14 +172,15 @@ export default function RestaurantsTabScreen() {
           `${apiBaseUrl}/api/v1/restaurants/${restaurant.restaurantId}`,
           { headers: await buildRequestHeaders() },
         );
-        if (!detailResponse.ok) throw new Error(`맛집 상세 요청 실패 (${detailResponse.status})`);
+        if (!detailResponse.ok) throw new Error(`음식점 상세 요청 실패 (${detailResponse.status})`);
         const detail: RestaurantDetailResponse = await detailResponse.json();
         destination = {
           ...restaurant,
           address: detail.address,
           latitude: detail.latitude,
           longitude: detail.longitude,
-          reviewCount: detail.reviews.length,
+          rating: detail.rating ?? restaurant.rating,
+          reviewCount: detail.reviewCount ?? detail.reviews.length,
           imageUrl: restaurant.thumbnailUrl ?? detail.photos[0] ?? null,
         };
         setRestaurants((current) =>
@@ -187,7 +191,7 @@ export default function RestaurantsTabScreen() {
       }
 
       if (destination.latitude === null || destination.longitude === null) {
-        Alert.alert('좌표 정보 없음', '이 맛집의 위도와 경도를 백엔드에서 확인해 주세요.');
+        Alert.alert('좌표 정보 없음', '이 음식점의 위도와 경도를 백엔드에서 확인해 주세요.');
         return;
       }
 
@@ -233,7 +237,7 @@ export default function RestaurantsTabScreen() {
         <TouchableOpacity onPress={() => navigation.goBack()} style={styles.backButton}>
           <Ionicons name="arrow-back" size={24} color="#fff" />
         </TouchableOpacity>
-        <Text style={styles.headerTitle}>맛집</Text>
+        <Text style={styles.headerTitle}>음식점</Text>
       </View>
 
       <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={styles.scrollContent}>
@@ -244,7 +248,7 @@ export default function RestaurantsTabScreen() {
               style={styles.searchInput}
               value={searchQuery}
               onChangeText={setSearchQuery}
-              placeholder="맛집 이름, 지역, 메뉴 검색"
+              placeholder="음식점 이름, 지역, 메뉴 검색"
               placeholderTextColor="#9CA3AF"
               returnKeyType="search"
               onSubmitEditing={() => setDebouncedSearchQuery(searchQuery.trim())}
@@ -296,7 +300,7 @@ export default function RestaurantsTabScreen() {
         <View style={styles.content}>
           <View style={styles.resultHeader}>
             <Text style={styles.sectionTitle}>
-              {debouncedSearchQuery ? '검색 결과' : '인기 맛집'}
+              {debouncedSearchQuery ? '검색 결과' : '음식점 목록'}
             </Text>
             <Text style={styles.resultCount}>{totalCount}개 음식점</Text>
           </View>
@@ -314,7 +318,7 @@ export default function RestaurantsTabScreen() {
 
           {!loading && !error && restaurants.length === 0 && (
             <Text style={styles.emptyText}>
-              {searchQuery.trim() ? '검색 결과가 없습니다.' : '조건에 맞는 맛집이 없습니다.'}
+              {searchQuery.trim() ? '검색 결과가 없습니다.' : '조건에 맞는 음식점이 없습니다.'}
             </Text>
           )}
 

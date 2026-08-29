@@ -16,7 +16,6 @@ import { Ionicons } from '@expo/vector-icons';
 import { useNavigation } from '@react-navigation/native';
 import { useBottomTabBarHeight } from '@react-navigation/bottom-tabs';
 import { getAccessToken } from '../../api/auth';
-import { getMyPage } from '../mypage/api';
 import { getApiBaseUrl, requestHeaders } from './api';
 
 type PopularPeriod = 'today' | 'week' | 'month';
@@ -53,19 +52,6 @@ type PromotionBannerListResponse = {
   items: PromotionBanner[];
 };
 
-type SpecialOffer = {
-  id: number;
-  title: string;
-  region: string;
-  category: string;
-  originalPrice: number;
-  salePrice: number;
-  discountRate: number;
-  reason: string;
-  imageUrl: string | null;
-  linkUrl: string | null;
-};
-
 const COLORS = {
   primary: '#008A9A',
   primaryLight: '#BFE8E2',
@@ -81,26 +67,13 @@ const COLORS = {
 const TAB_ITEMS = [
   { label: '테마', route: 'ThemeTab' },
   { label: '숙소', route: 'HotelsTab' },
-  { label: '맛집', route: 'RestaurantsTab' },
+  { label: '음식점', route: 'RestaurantsTab' },
 ] as const;
 
 const PERIOD_OPTIONS: Array<{ key: PopularPeriod; label: string }> = [
   { key: 'today', label: '오늘' },
   { key: 'week', label: '일주일' },
   { key: 'month', label: '한달' },
-];
-
-const DEALS = [
-  {
-    image: 'https://images.unsplash.com/photo-1631049552057-403cdb8f0658?w=300&h=200&fit=crop',
-    title: '숙박 특가',
-    discount: '30% 할인',
-  },
-  {
-    image: 'https://images.unsplash.com/photo-1663530761401-15eefb544889?w=300&h=200&fit=crop',
-    title: '맛집 이벤트',
-    discount: '20% 할인',
-  },
 ];
 
 export default function HomeScreen() {
@@ -113,12 +86,8 @@ export default function HomeScreen() {
   const [popularLoading, setPopularLoading] = useState(true);
   const [popularError, setPopularError] = useState<string | null>(null);
   const [banners, setBanners] = useState<PromotionBanner[]>([]);
-  const [offers, setOffers] = useState<SpecialOffer[]>([]);
   const [promotionsLoading, setPromotionsLoading] = useState(true);
   const [promotionsError, setPromotionsError] = useState<string | null>(null);
-  const [offerLoading, setOfferLoading] = useState(false);
-  const [offerError, setOfferError] = useState<string | null>(null);
-  const [nickname, setNickname] = useState<string | null>(null);
   const [searchSaving, setSearchSaving] = useState(false);
 
   const openLink = useCallback(async (url: string | null) => {
@@ -149,20 +118,10 @@ export default function HomeScreen() {
         body: JSON.stringify({ keyword }),
       });
       if (!historyResponse.ok) throw new Error(`검색 이력 저장 실패 (${historyResponse.status})`);
-
-      setOfferLoading(true);
-      setOfferError(null);
-      const offerResponse = await fetch(`${apiBaseUrl}/api/v1/promotions/details?limit=5`, {
-        headers: { ...requestHeaders, Authorization: `Bearer ${token}` },
-      });
-      if (!offerResponse.ok) throw new Error(`맞춤 할인 요청 실패 (${offerResponse.status})`);
-      const data: SpecialOffer[] = await offerResponse.json();
-      setOffers(data ?? []);
     } catch (error) {
       console.warn(error instanceof Error ? error.message : '검색 이력을 저장하지 못했습니다.');
     } finally {
       setSearchSaving(false);
-      setOfferLoading(false);
     }
   }, [searchSaving, searchText]);
 
@@ -235,45 +194,6 @@ export default function HomeScreen() {
     };
 
     void loadPromotions();
-    return () => controller.abort();
-  }, []);
-
-  useEffect(() => {
-    const controller = new AbortController();
-
-    const loadHistoryBasedOffers = async () => {
-      setOfferLoading(true);
-      setOfferError(null);
-      try {
-        const [apiBaseUrl, token] = await Promise.all([
-          getApiBaseUrl(controller.signal),
-          getAccessToken(),
-        ]);
-        if (!token) throw new Error('맞춤 할인 추천은 로그인이 필요합니다.');
-
-        const offerRequest = fetch(`${apiBaseUrl}/api/v1/promotions/details?limit=5`, {
-          headers: { ...requestHeaders, Authorization: `Bearer ${token}` },
-          signal: controller.signal,
-        });
-        const profileRequest = getMyPage(controller.signal).catch(() => null);
-        const [response, profile] = await Promise.all([offerRequest, profileRequest]);
-        if (!response.ok) throw new Error(`맞춤 할인 요청 실패 (${response.status})`);
-        const data: SpecialOffer[] = await response.json();
-        if (!controller.signal.aborted) {
-          setOffers(data ?? []);
-          setNickname(profile?.nickname?.trim() || null);
-        }
-      } catch (error) {
-        if (!controller.signal.aborted) {
-          setOffers([]);
-          setOfferError(error instanceof Error ? error.message : '맞춤 할인을 불러오지 못했습니다.');
-        }
-      } finally {
-        if (!controller.signal.aborted) setOfferLoading(false);
-      }
-    };
-
-    void loadHistoryBasedOffers();
     return () => controller.abort();
   }, []);
 
@@ -442,52 +362,6 @@ export default function HomeScreen() {
             </TouchableOpacity>
           ))}
 
-          <Text style={styles.sectionTitle}>할인 프로모션</Text>
-          <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.dealScroll}>
-            {DEALS.map((deal) => (
-              <View key={deal.title} style={styles.dealCard}>
-                <View>
-                  <Image source={{ uri: deal.image }} style={styles.dealImage} />
-                  <View style={styles.discountBadge}>
-                    <Text style={styles.discountText}>{deal.discount}</Text>
-                  </View>
-                </View>
-                <View style={styles.dealInfo}>
-                  <Text style={styles.dealTitle}>{deal.title}</Text>
-                </View>
-              </View>
-            ))}
-          </ScrollView>
-
-          <Text style={styles.sectionTitle}>{nickname ? `${nickname}님 맞춤 할인` : '나를 위한 맞춤 할인'}</Text>
-          {offerLoading && <ActivityIndicator color={COLORS.primary} style={styles.promotionLoading} />}
-          {offerError && <Text style={styles.promotionError}>{offerError}</Text>}
-          {!offerLoading && !offerError && offers.length === 0 && (
-            <Text style={styles.popularEmptyText}>검색 이력에 맞는 할인이 없습니다.</Text>
-          )}
-          {!offerLoading && !offerError && offers.length > 0 && (
-          <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.dealScroll}>
-            {offers.map((offer) => (
-              <TouchableOpacity key={offer.id} activeOpacity={offer.linkUrl ? 0.85 : 1}
-                onPress={() => void openLink(offer.linkUrl)} style={styles.dealCard}>
-                <View>
-                  {offer.imageUrl
-                    ? <Image source={{ uri: offer.imageUrl }} style={styles.dealImage} />
-                    : <View style={[styles.dealImage, styles.dealImagePlaceholder]}><Ionicons name="pricetag-outline" size={28} color={COLORS.textMuted} /></View>}
-                  <View style={styles.discountBadge}>
-                    <Text style={styles.discountText}>{offer.discountRate}% 할인</Text>
-                  </View>
-                </View>
-                <View style={styles.dealInfo}>
-                  <Text style={styles.dealMeta}>{offer.region} · {offer.category}</Text>
-                  <Text style={styles.dealTitle} numberOfLines={1}>{offer.title}</Text>
-                  <Text style={styles.salePrice}>{offer.salePrice.toLocaleString()}원</Text>
-                  <Text style={styles.originalPrice}>{offer.originalPrice.toLocaleString()}원</Text>
-                </View>
-              </TouchableOpacity>
-            ))}
-          </ScrollView>
-          )}
         </View>
       </ScrollView>
     </SafeAreaView>
@@ -819,57 +693,5 @@ const styles = StyleSheet.create({
     fontSize: 13,
     color: COLORS.primary,
     fontWeight: '500',
-  },
-  dealScroll: { marginBottom: 8 },
-  dealCard: {
-    width: 180,
-    marginRight: 12,
-    backgroundColor: COLORS.white,
-    borderRadius: 16,
-    overflow: 'hidden',
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.06,
-    shadowRadius: 4,
-    elevation: 2,
-  },
-  dealImage: {
-    width: '100%',
-    height: 110,
-  },
-  dealImagePlaceholder: {
-    alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: COLORS.bg,
-  },
-  discountBadge: {
-    position: 'absolute',
-    top: 8,
-    right: 8,
-    backgroundColor: COLORS.red,
-    borderRadius: 100,
-    paddingHorizontal: 8,
-    paddingVertical: 3,
-  },
-  discountText: {
-    color: COLORS.white,
-    fontSize: 11,
-    fontWeight: '600',
-  },
-  dealInfo: {
-    padding: 12,
-  },
-  dealTitle: {
-    fontSize: 14,
-    fontWeight: '600',
-    color: COLORS.text,
-  },
-  dealMeta: { color: COLORS.textSub, fontSize: 11, marginBottom: 4 },
-  salePrice: { color: COLORS.primary, fontSize: 14, fontWeight: '700', marginTop: 6 },
-  originalPrice: {
-    color: COLORS.textMuted,
-    fontSize: 11,
-    textDecorationLine: 'line-through',
-    marginTop: 2,
   },
 });
