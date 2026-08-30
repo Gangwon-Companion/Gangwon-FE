@@ -1,6 +1,6 @@
 import { ImageBackground, Pressable, StyleSheet, Text, View } from 'react-native';
 import { NativeStackScreenProps } from '@react-navigation/native-stack';
-import { Globe, Plane } from 'lucide-react-native';
+import { Plane } from 'lucide-react-native';
 import { colors } from '../../constants/colors';
 import { RootStackParamList } from '../../navigation/types';
 
@@ -22,20 +22,15 @@ export default function OnboardingScreen({ navigation }: Props) {
               <View style={styles.logoCircle}>
                 <Plane size={24} color={colors.primary} />
               </View>
-              <Text style={styles.brandText}>Travelin</Text>
+              <Text style={styles.brandText}>강원동행</Text>
             </View>
-
-            <Pressable style={styles.languageButton}>
-              <Globe size={16} color={colors.white} />
-              <Text style={styles.languageText}>한국어</Text>
-            </Pressable>
           </View>
 
           <View style={styles.bottomSheet}>
-            <Text style={styles.title}>당신의 여행,{`\n`}새로운 세계로</Text>
+            <Text style={styles.title}>당신의 여행,{`\n`}새로운 강원도로</Text>
             <Text style={styles.description}>특별한 여행지를 발견하고 잊지 못할 추억을 만드세요</Text>
 
-            <Pressable style={styles.primaryButton} onPress={() => navigation.navigate('Login')}>
+            <Pressable style={styles.primaryButton} onPress={() => navigation.navigate('SignUp')}>
               <Text style={styles.primaryButtonText}>여행 시작하기</Text>
               <Plane size={20} color={colors.white} />
             </Pressable>
@@ -96,19 +91,6 @@ const styles = StyleSheet.create({
     color: colors.white,
     fontSize: 24,
     fontWeight: '600',
-  },
-  languageButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-    paddingHorizontal: 14,
-    paddingVertical: 9,
-    borderRadius: 999,
-    backgroundColor: 'rgba(255,255,255,0.22)',
-  },
-  languageText: {
-    color: colors.white,
-    fontSize: 14,
   },
   bottomSheet: {
     backgroundColor: colors.white,

@@ -15,10 +15,12 @@ export type TravelCourse = {
 export type CommunityComment = {
   id: number;
   author: string;
+  avatar?: string | null;
   content: string;
   createdAt: string;
   createdAtMs: number;
   liked: boolean;
+  isMine: boolean;
   likeCount: number;
 };
 
@@ -33,7 +35,7 @@ export type CommunityPost = {
   id: number;
   title?: string;
   author: string;
-  avatar: string;
+  avatar?: string | null;
   isMine: boolean;
   content: string;
   media: CommunityMedia[];
@@ -43,6 +45,7 @@ export type CommunityPost = {
   saved: boolean;
   likeCount: number;
   saveCount: number;
+  commentCount: number;
   comments: CommunityComment[];
   createdAt: string;
   createdAtMs: number;

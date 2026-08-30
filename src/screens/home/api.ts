@@ -90,6 +90,7 @@ export type DestinationDetail = {
 export type PlaceReview = {
   reviewId: number;
   nickname: string;
+  profileImageUrl?: string | null;
   content: string;
   rating: number;
   createdAt: string;

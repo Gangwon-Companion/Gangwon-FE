@@ -21,6 +21,7 @@ import { NativeStackScreenProps } from '@react-navigation/native-stack';
 import * as Location from 'expo-location';
 
 import { RootStackParamList } from '../../navigation/types';
+import { getMyPage, getMyReviews } from '../mypage/api';
 import {
   ApiResponseError,
   createPlaceReview,
@@ -110,6 +111,8 @@ export default function HotelDetailScreen({ navigation, route }: Props) {
   const [openingMap, setOpeningMap] = useState(false);
   const [reviewSubmitting, setReviewSubmitting] = useState(false);
   const [imageIndex, setImageIndex] = useState(0);
+  const [currentUserNickname, setCurrentUserNickname] = useState<string | null>(null);
+  const [currentUserProfileImageUrl, setCurrentUserProfileImageUrl] = useState<string | null>(null);
 
   const imageUrls = useMemo(() => {
     const sourcePhotos = detail ? detail.photos ?? [] : [imageUrl];
@@ -154,6 +157,25 @@ export default function HotelDetailScreen({ navigation, route }: Props) {
   }, [loadDetail]);
 
   useEffect(() => {
+    const controller = new AbortController();
+    void getMyPage(controller.signal)
+      .then((data) => {
+        if (!controller.signal.aborted) {
+          setCurrentUserNickname(data.nickname);
+          setCurrentUserProfileImageUrl(data.profileImageUrl);
+        }
+      })
+      .catch(() => {
+        if (!controller.signal.aborted) {
+          setCurrentUserNickname(null);
+          setCurrentUserProfileImageUrl(null);
+        }
+      });
+
+    return () => controller.abort();
+  }, []);
+
+  useEffect(() => {
     setImageIndex(0);
   }, [imageUrls.length]);
 
@@ -167,7 +189,7 @@ export default function HotelDetailScreen({ navigation, route }: Props) {
     setReviewSubmitting(true);
     try {
       await action();
-      await loadDetail();
+      await Promise.allSettled([loadDetail(), getMyPage(), getMyReviews()]);
     } catch (reviewError) {
       const message = reviewError instanceof ApiResponseError && reviewError.status === 401
         ? '로그인 후 이용할 수 있습니다.'
@@ -340,6 +362,8 @@ export default function HotelDetailScreen({ navigation, route }: Props) {
         <ReviewSection
           reviews={reviews}
           reviewCount={reviewCount}
+          currentUserNickname={currentUserNickname}
+          currentUserProfileImageUrl={currentUserProfileImageUrl}
           submitting={reviewSubmitting}
           onCreate={createReview}
           onUpdate={updateReview}

@@ -1,4 +1,3 @@
-import { CommonActions } from '@react-navigation/native';
 import {
   KeyboardAvoidingView,
   Platform,
@@ -16,15 +15,6 @@ import { RootStackParamList } from '../../navigation/types';
 type Props = NativeStackScreenProps<RootStackParamList, 'Login'>;
 
 export default function LoginScreen({ navigation }: Props) {
-  const goToHome = () => {
-    navigation.dispatch(
-      CommonActions.reset({
-        index: 0,
-        routes: [{ name: 'Main' }],
-      }),
-    );
-  };
-
   return (
     <KeyboardAvoidingView
       style={styles.pageWrap}
@@ -49,40 +39,12 @@ export default function LoginScreen({ navigation }: Props) {
             <View style={styles.logoCircle}>
               <Plane size={28} color={colors.white} />
             </View>
-            <Text style={styles.brandText}>Travelin</Text>
+            <Text style={styles.brandText}>강원동행</Text>
           </View>
 
           <Text style={styles.title}>다시 만나서 반가워요</Text>
 
           <View style={styles.loginOptions}>
-            <Pressable
-              accessibilityRole="button"
-              style={({ pressed }) => [styles.kakaoButton, pressed && styles.buttonPressed]}
-              onPress={goToHome}
-            >
-              <View style={styles.kakaoSymbol}>
-                <Text style={styles.kakaoSymbolText}>K</Text>
-              </View>
-              <Text style={styles.kakaoButtonText}>카카오로 로그인</Text>
-            </Pressable>
-
-            <Pressable
-              accessibilityRole="button"
-              style={({ pressed }) => [styles.googleButton, pressed && styles.buttonPressed]}
-              onPress={goToHome}
-            >
-              <View style={styles.googleSymbol}>
-                <Text style={styles.googleSymbolText}>G</Text>
-              </View>
-              <Text style={styles.googleButtonText}>Google로 로그인</Text>
-            </Pressable>
-
-            <View style={styles.dividerRow}>
-              <View style={styles.divider} />
-              <Text style={styles.dividerText}>또는</Text>
-              <View style={styles.divider} />
-            </View>
-
             <Pressable
               accessibilityRole="button"
               style={({ pressed }) => [styles.emailButton, pressed && styles.buttonPressed]}
@@ -192,80 +154,6 @@ const styles = StyleSheet.create({
   },
   buttonPressed: {
     opacity: 0.82,
-  },
-  dividerRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 12,
-    marginVertical: 4,
-  },
-  divider: {
-    flex: 1,
-    height: 1,
-    backgroundColor: colors.gray200,
-  },
-  dividerText: {
-    color: colors.gray400,
-    fontSize: 13,
-  },
-  kakaoButton: {
-    height: 56,
-    borderRadius: 16,
-    backgroundColor: '#FEE500',
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  kakaoSymbol: {
-    position: 'absolute',
-    left: 18,
-    width: 28,
-    height: 28,
-    borderRadius: 14,
-    backgroundColor: '#3C1E1E',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  kakaoSymbolText: {
-    color: '#FEE500',
-    fontWeight: '800',
-  },
-  kakaoButtonText: {
-    color: '#191919',
-    fontSize: 16,
-    fontWeight: '600',
-  },
-  googleButton: {
-    height: 56,
-    borderRadius: 16,
-    borderWidth: 1,
-    borderColor: colors.gray300,
-    backgroundColor: colors.white,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  googleSymbol: {
-    position: 'absolute',
-    left: 18,
-    width: 28,
-    height: 28,
-    borderRadius: 14,
-    borderWidth: 1,
-    borderColor: colors.gray200,
-    backgroundColor: colors.white,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  googleSymbolText: {
-    color: '#4285F4',
-    fontSize: 17,
-    fontWeight: '800',
-  },
-  googleButtonText: {
-    color: colors.text,
-    fontSize: 16,
-    fontWeight: '600',
   },
   signupRow: {
     flexDirection: 'row',
