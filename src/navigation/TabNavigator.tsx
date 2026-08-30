@@ -14,7 +14,7 @@ export type TabParamList = {
   홈: undefined;
   내여행: undefined;
   AI추천: undefined;
-  커뮤니티: undefined;
+  커뮤니티: { postId?: number } | undefined;
   마이: undefined;
 };
 

@@ -1,21 +1,29 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import * as ImagePicker from 'expo-image-picker';
 import {
   Alert,
   Image,
   KeyboardAvoidingView,
+  Linking,
+  Modal,
   Platform,
+  Pressable,
+  RefreshControl,
   ScrollView,
   StatusBar,
   StyleSheet,
   Text,
+  TextInput,
   TouchableOpacity,
   View,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useBottomTabBarHeight } from '@react-navigation/bottom-tabs';
+import { RouteProp, useFocusEffect, useRoute } from '@react-navigation/native';
 import { Ionicons } from '@expo/vector-icons';
 
+import type { TabParamList } from '../../navigation/TabNavigator';
+import { getMyPage } from '../mypage/api';
 import CommunityCommentSection from './components/CommunityCommentSection';
 import CommunityFilterBar from './components/CommunityFilterBar';
 import CommunityHeader from './components/CommunityHeader';
@@ -34,6 +42,7 @@ import {
 } from './constants';
 import {
   CommunityMedia,
+  CommunityComment,
   CommunityPost,
   CommentSortOption,
   DraftPost,
@@ -53,12 +62,14 @@ import {
   CommunityApiPostSummary,
   createCommunityComment,
   createCommunityPost,
+  deleteCommunityComment,
   deleteCommunityPost,
   fetchCommunityPost,
   fetchCommunityPosts,
   likeCommunityPost,
   likeCommunityComment,
   saveCommunityPost,
+  updateCommunityComment,
   updateCommunityPost,
   fetchMyCommunityCourses,
   uploadCommunityImage,
@@ -66,26 +77,95 @@ import {
 
 type ScreenMode = 'list' | 'detail' | 'form';
 
+async function openAppSettings() {
+  try {
+    await Linking.openSettings();
+  } catch {
+    Alert.alert('설정 열기 실패', '기기 설정에서 사진 접근 권한을 직접 허용해주세요.');
+  }
+}
+
+async function ensurePhotoLibraryPermission() {
+  if (Platform.OS === 'web') return true;
+
+  const currentPermission = await ImagePicker.getMediaLibraryPermissionsAsync();
+  if (currentPermission.granted) return true;
+
+  const permission = currentPermission.canAskAgain
+    ? await ImagePicker.requestMediaLibraryPermissionsAsync()
+    : currentPermission;
+
+  if (permission.granted) return true;
+
+  const message = permission.canAskAgain
+    ? '게시글에 사진을 첨부하려면 사진 접근 권한이 필요합니다.'
+    : '사진 접근 권한이 꺼져 있습니다. 기기 설정에서 강원동행의 사진 접근을 허용해주세요.';
+
+  const actions = permission.canAskAgain
+    ? [{ text: '확인' }]
+    : [
+        { text: '취소', style: 'cancel' as const },
+        { text: '설정 열기', onPress: () => void openAppSettings() },
+      ];
+
+  Alert.alert('사진 접근 권한 필요', message, actions);
+  return false;
+}
+
+function confirmAction(title: string, message: string, confirmText: string, destructive = false) {
+  if (Platform.OS === 'web') return Promise.resolve(globalThis.confirm(message));
+
+  return new Promise<boolean>((resolve) => {
+    Alert.alert(title, message, [
+      { text: '취소', style: 'cancel', onPress: () => resolve(false) },
+      {
+        text: confirmText,
+        style: destructive ? 'destructive' : 'default',
+        onPress: () => resolve(true),
+      },
+    ], { cancelable: true, onDismiss: () => resolve(false) });
+  });
+}
+
 function toComment(comment: CommunityApiComment): CommunityPost['comments'][number] {
   return {
-    id: comment.id,
-    author: comment.author,
+    id: comment.commentId ?? comment.id ?? 0,
+    author: comment.nickname ?? comment.author,
+    avatar: comment.profileImageUrl ?? comment.authorProfileImageUrl ?? null,
     content: comment.content,
     createdAt: comment.createdAt,
     createdAtMs: Date.parse(comment.createdAt) || Date.now(),
     liked: comment.liked,
+    isMine: comment.isMine,
     likeCount: comment.likeCount,
   };
 }
 
-function summaryToPost(post: CommunityApiPostSummary, courses: TravelCourse[]): CommunityPost {
+function getAuthorProfileImage(post: CommunityApiPostSummary, currentUserProfileImageUrl?: string | null) {
+  return post.profileImageUrl ?? post.authorProfileImageUrl ?? (post.isMine ? currentUserProfileImageUrl : null);
+}
+
+function getAuthorName(post: CommunityApiPostSummary, currentUserNickname?: string | null) {
+  return post.isMine && currentUserNickname ? currentUserNickname : post.nickname ?? post.author;
+}
+
+function getPostId(post: CommunityApiPostSummary) {
+  return post.postId ?? post.id ?? 0;
+}
+
+function summaryToPost(
+  post: CommunityApiPostSummary,
+  courses: TravelCourse[],
+  currentUserProfileImageUrl?: string | null,
+  currentUserNickname?: string | null,
+): CommunityPost {
   return {
-    id: post.id,
+    id: getPostId(post),
     title: post.title,
-    author: post.author,
-    avatar: 'https://images.unsplash.com/photo-1494790108377-be9c29b29330?w=120&h=120&fit=crop',
+    author: getAuthorName(post, currentUserNickname),
+    avatar: getAuthorProfileImage(post, currentUserProfileImageUrl),
     isMine: post.isMine,
-    content: post.title,
+    content: post.content ?? post.title,
     media: [],
     course: post.courseId ? courses.find((course) => course.id === post.courseId) : undefined,
     hashtags: post.hashtags ?? [],
@@ -93,23 +173,39 @@ function summaryToPost(post: CommunityApiPostSummary, courses: TravelCourse[]): 
     saved: post.saved,
     likeCount: post.likeCount,
     saveCount: post.saveCount,
+    commentCount: post.commentCount ?? 0,
     comments: [],
     createdAt: post.createdAt,
     createdAtMs: Date.parse(post.createdAt) || Date.now(),
   };
 }
 
-function detailToPost(post: CommunityApiPostDetail, courses: TravelCourse[], previous?: CommunityPost): CommunityPost {
-  const media: CommunityMedia[] = post.images.map((image: CommunityApiImage, index) => ({
-    id: index + 1,
-    type: 'image',
-    uri: image.url,
-    originalUri: image.s3Key,
-  }));
+function detailToPost(
+  post: CommunityApiPostDetail,
+  courses: TravelCourse[],
+  previous?: CommunityPost,
+  currentUserProfileImageUrl?: string | null,
+  currentUserNickname?: string | null,
+): CommunityPost {
+  const media: CommunityMedia[] = (post.images?.length
+    ? post.images.map((image: CommunityApiImage, index) => ({
+        id: index + 1,
+        type: 'image' as const,
+        uri: image.url,
+        originalUri: image.s3Key,
+      }))
+    : (post.mediaUrls ?? []).map((uri, index) => ({
+        id: index + 1,
+        type: 'image' as const,
+        uri,
+        originalUri: uri,
+      })));
   return {
-    ...(previous ?? summaryToPost(post, courses)),
+    ...(previous ?? summaryToPost(post, courses, currentUserProfileImageUrl, currentUserNickname)),
     title: post.title,
+    author: getAuthorName(post, currentUserNickname),
     content: post.content,
+    avatar: getAuthorProfileImage(post, currentUserProfileImageUrl) ?? previous?.avatar ?? null,
     media,
     course: post.courseId ? courses.find((course) => course.id === post.courseId) : undefined,
     isMine: post.isMine,
@@ -118,12 +214,15 @@ function detailToPost(post: CommunityApiPostDetail, courses: TravelCourse[], pre
     saved: post.saved,
     likeCount: post.likeCount,
     saveCount: post.saveCount,
+    commentCount: post.commentCount ?? post.comments.length,
     comments: post.comments.map(toComment),
   };
 }
 
 export default function CommunityScreen() {
+  const route = useRoute<RouteProp<TabParamList, '커뮤니티'>>();
   const tabBarHeight = useBottomTabBarHeight();
+  const requestedPostId = route.params?.postId;
   const [mode, setMode] = useState<ScreenMode>('list');
   const [posts, setPosts] = useState<CommunityPost[]>([]);
   const [selectedPostId, setSelectedPostId] = useState<number | null>(null);
@@ -138,6 +237,40 @@ export default function CommunityScreen() {
   const [page, setPage] = useState(1);
   const [selectedMedia, setSelectedMedia] = useState<CommunityMedia | null>(null);
   const [courses, setCourses] = useState<TravelCourse[]>([]);
+  const [currentUserProfileImageUrl, setCurrentUserProfileImageUrl] = useState<string | null>(null);
+  const [currentUserNickname, setCurrentUserNickname] = useState<string | null>(null);
+  const [refreshing, setRefreshing] = useState(false);
+  const [editingComment, setEditingComment] = useState<CommunityComment | null>(null);
+  const [editingCommentText, setEditingCommentText] = useState('');
+
+  useFocusEffect(
+    useCallback(() => {
+      let active = true;
+      void getMyPage()
+        .then((user) => {
+          if (active) {
+            setCurrentUserProfileImageUrl(user.profileImageUrl);
+            setCurrentUserNickname(user.nickname);
+          }
+        })
+        .catch(() => {
+          if (active) {
+            setCurrentUserProfileImageUrl(null);
+            setCurrentUserNickname(null);
+          }
+        });
+
+      return () => {
+        active = false;
+      };
+    }, []),
+  );
+
+  useEffect(() => {
+    setPosts((current) => current.map((post) => (
+      post.isMine ? { ...post, author: currentUserNickname ?? post.author, avatar: currentUserProfileImageUrl } : post
+    )));
+  }, [currentUserNickname, currentUserProfileImageUrl]);
 
   useEffect(() => {
     let active = true;
@@ -155,9 +288,15 @@ export default function CommunityScreen() {
         if (!active) return;
         const detailedPosts = await Promise.all(response.content.map(async (summary) => {
           try {
-            return detailToPost(await fetchCommunityPost(summary.id), courses, summaryToPost(summary, courses));
+            return detailToPost(
+              await fetchCommunityPost(getPostId(summary)),
+              courses,
+              summaryToPost(summary, courses, currentUserProfileImageUrl, currentUserNickname),
+              currentUserProfileImageUrl,
+              currentUserNickname,
+            );
           } catch {
-            return summaryToPost(summary, courses);
+            return summaryToPost(summary, courses, currentUserProfileImageUrl, currentUserNickname);
           }
         }));
         if (active) setPosts(detailedPosts);
@@ -241,16 +380,26 @@ export default function CommunityScreen() {
     setMode('form');
   };
 
-  const openDetail = (postId: number) => {
+  const openDetail = useCallback((postId: number) => {
     setSelectedPostId(postId);
     setCommentText('');
     setMode('detail');
     void fetchCommunityPost(postId)
       .then((post) => {
-        setPosts((current) => current.map((item) => (item.id === postId ? detailToPost(post, courses, item) : item)));
+        setPosts((current) => {
+          const previous = current.find((item) => item.id === postId);
+          const nextPost = detailToPost(post, courses, previous, currentUserProfileImageUrl, currentUserNickname);
+          return previous
+            ? current.map((item) => (item.id === postId ? nextPost : item))
+            : [nextPost, ...current];
+        });
       })
       .catch(() => undefined);
-  };
+  }, [courses, currentUserNickname, currentUserProfileImageUrl]);
+
+  useEffect(() => {
+    if (typeof requestedPostId === 'number') openDetail(requestedPostId);
+  }, [openDetail, requestedPostId]);
 
   const goBack = () => {
     if (mode === 'form' && editingPostId) {
@@ -281,45 +430,78 @@ export default function CommunityScreen() {
     setPosts((current) => current.map((post) => (post.id === postId ? updater(post) : post)));
   };
 
+  const refreshPost = useCallback(async (postId: number) => {
+    const post = await fetchCommunityPost(postId);
+    setPosts((current) => {
+      const previous = current.find((item) => item.id === postId);
+      const nextPost = detailToPost(post, courses, previous, currentUserProfileImageUrl, currentUserNickname);
+      return previous
+        ? current.map((item) => (item.id === postId ? nextPost : item))
+        : [nextPost, ...current];
+    });
+  }, [courses, currentUserNickname, currentUserProfileImageUrl]);
+
+  const refreshCommunity = useCallback(async () => {
+    setRefreshing(true);
+    try {
+      const response = await fetchCommunityPosts();
+      const detailedPosts = await Promise.all(response.content.map(async (summary) => {
+        try {
+          return detailToPost(
+            await fetchCommunityPost(getPostId(summary)),
+            courses,
+            summaryToPost(summary, courses, currentUserProfileImageUrl, currentUserNickname),
+            currentUserProfileImageUrl,
+            currentUserNickname,
+          );
+        } catch {
+          return summaryToPost(summary, courses, currentUserProfileImageUrl, currentUserNickname);
+        }
+      }));
+      setPosts(detailedPosts);
+      if (selectedPostId) await refreshPost(selectedPostId);
+    } finally {
+      setRefreshing(false);
+    }
+  }, [courses, currentUserNickname, currentUserProfileImageUrl, refreshPost, selectedPostId]);
+
   const toggleLike = (postId: number) => {
     const post = posts.find((item) => item.id === postId);
-    if (post) void likeCommunityPost(postId, post.liked).catch(() => undefined);
+    if (post) void likeCommunityPost(postId, post.liked)
+      .then(() => refreshPost(postId))
+      .catch(() => refreshPost(postId).catch(() => undefined));
     updatePost(postId, (post) => ({
       ...post,
       liked: !post.liked,
-      likeCount: post.likeCount + (post.liked ? -1 : 1),
+      likeCount: Math.max(0, post.likeCount + (post.liked ? -1 : 1)),
     }));
   };
 
   const toggleSave = (postId: number) => {
     const current = posts.find((item) => item.id === postId);
     if (!current) return;
-    void saveCommunityPost(postId, current.saved).catch(() => undefined);
+    void saveCommunityPost(postId, current.saved)
+      .then(() => refreshPost(postId))
+      .catch(() => refreshPost(postId).catch(() => undefined));
     updatePost(postId, (post) => ({
       ...post,
       saved: !post.saved,
-      saveCount: post.saveCount + (post.saved ? -1 : 1),
+      saveCount: Math.max(0, post.saveCount + (post.saved ? -1 : 1)),
     }));
   };
 
   const deletePost = (postId: number) => {
-    Alert.alert('게시글 삭제', '이 게시글을 삭제하시겠어요?', [
-      { text: '취소', style: 'cancel' },
-      {
-        text: '삭제',
-        style: 'destructive',
-        onPress: () => {
-          void deleteCommunityPost(postId)
-            .then(() => {
-              setPosts((current) => current.filter((post) => post.id !== postId));
-              setSelectedPostId(null);
-              setEditingPostId(null);
-              setMode('list');
-            })
-            .catch(() => Alert.alert('삭제 실패', '로그인 상태와 서버 연결을 확인해주세요.'));
-        },
-      },
-    ]);
+    void confirmAction('게시글 삭제', '이 게시글을 삭제할까요?', '삭제', true).then((confirmed) => {
+      if (!confirmed) return;
+      void deleteCommunityPost(postId)
+        .then(() => {
+          setPosts((current) => current.filter((post) => post.id !== postId));
+          setSelectedPostId(null);
+          setEditingPostId(null);
+          setMode('list');
+        })
+        .catch(() => Alert.alert('삭제 실패', '로그인 상태와 서버 연결을 확인해주세요.'));
+    });
   };
 
   const toggleExpanded = (postId: number) => {
@@ -334,8 +516,13 @@ export default function CommunityScreen() {
 
     void createCommunityComment(selectedPost.id, content)
       .then((comment) => {
-        updatePost(selectedPost.id, (post) => ({ ...post, comments: [...post.comments, toComment(comment)] }));
+        updatePost(selectedPost.id, (post) => ({
+          ...post,
+          commentCount: post.commentCount + 1,
+          comments: [...post.comments, toComment(comment)],
+        }));
         setCommentText('');
+        void refreshPost(selectedPost.id);
       })
       .catch(() => Alert.alert('댓글 등록 실패', '로그인 상태와 서버 연결을 확인해주세요.'));
   };
@@ -343,7 +530,9 @@ export default function CommunityScreen() {
   const toggleCommentLike = (postId: number, commentId: number) => {
     const current = posts.find((item) => item.id === postId)?.comments.find((item) => item.id === commentId);
     if (!current) return;
-    void likeCommunityComment(commentId, current.liked).catch(() => undefined);
+    void likeCommunityComment(commentId, current.liked)
+      .then(() => refreshPost(postId))
+      .catch(() => refreshPost(postId).catch(() => undefined));
     updatePost(postId, (post) => ({
       ...post,
       comments: post.comments.map((comment) =>
@@ -351,7 +540,7 @@ export default function CommunityScreen() {
           ? {
               ...comment,
               liked: !comment.liked,
-              likeCount: comment.likeCount + (comment.liked ? -1 : 1),
+              likeCount: Math.max(0, comment.likeCount + (comment.liked ? -1 : 1)),
             }
           : comment,
       ),
@@ -360,12 +549,16 @@ export default function CommunityScreen() {
 
   const addDraftMedia = (type: MediaType) => {
     if (type !== 'image') return;
-    void ImagePicker.launchImageLibraryAsync({
-      mediaTypes: ['images'],
-      allowsMultipleSelection: true,
-      selectionLimit: MAX_MEDIA_COUNT,
-      quality: 0.85,
+    void ensurePhotoLibraryPermission().then((granted) => {
+      if (!granted) return null;
+      return ImagePicker.launchImageLibraryAsync({
+        mediaTypes: ['images'],
+        allowsMultipleSelection: true,
+        selectionLimit: MAX_MEDIA_COUNT,
+        quality: 0.85,
+      });
     }).then((result) => {
+      if (!result) return;
       if (result.canceled) return;
       setDraft((current) => ({
         ...current,
@@ -375,7 +568,66 @@ export default function CommunityScreen() {
           uri: asset.uri,
         }))].slice(0, MAX_MEDIA_COUNT),
       }));
-    });
+    }).catch(() => Alert.alert('사진 선택 실패', '사진을 불러오지 못했습니다. 다시 시도해주세요.'));
+  };
+
+  const openCommentMenu = (comment: CommunityComment) => {
+    const startEdit = () => {
+      setEditingComment(comment);
+      setEditingCommentText(comment.content);
+    };
+    const removeComment = () => {
+      void confirmAction('댓글 삭제', '댓글을 삭제할까요?', '삭제', true).then((confirmed) => {
+        if (!confirmed || !selectedPost) return;
+        void deleteCommunityComment(comment.id)
+          .then(() => {
+            updatePost(selectedPost.id, (post) => ({
+              ...post,
+              commentCount: Math.max(0, post.commentCount - 1),
+              comments: post.comments.filter((item) => item.id !== comment.id),
+            }));
+            void refreshPost(selectedPost.id);
+          })
+          .catch(() => Alert.alert('댓글 삭제 실패', '로그인 상태와 서버 연결을 확인해주세요.'));
+      });
+    };
+
+    if (Platform.OS === 'web') {
+      if (globalThis.confirm('댓글을 수정할까요?\n취소를 누르면 삭제 여부를 다시 물어봅니다.')) {
+        startEdit();
+      } else if (globalThis.confirm('댓글을 삭제할까요?')) {
+        removeComment();
+      }
+      return;
+    }
+
+    Alert.alert('댓글 관리', '댓글을 어떻게 할까요?', [
+      { text: '취소', style: 'cancel' },
+      { text: '수정', onPress: startEdit },
+      { text: '삭제', style: 'destructive', onPress: removeComment },
+    ]);
+  };
+
+  const submitCommentEdit = async () => {
+    if (!editingComment || !selectedPost) return;
+    const content = editingCommentText.trim();
+    if (!content) return Alert.alert('입력 확인', '댓글 내용을 입력해주세요.');
+    if (!await confirmAction('댓글 수정', '댓글을 수정할까요?', '수정')) return;
+
+    try {
+      const updated = await updateCommunityComment(editingComment.id, content);
+      updatePost(selectedPost.id, (post) => ({
+        ...post,
+        comments: post.comments.map((comment) =>
+          comment.id === editingComment.id ? toComment(updated) : comment,
+        ),
+      }));
+      setEditingComment(null);
+      setEditingCommentText('');
+      await refreshPost(selectedPost.id);
+    } catch {
+      Alert.alert('댓글 수정 실패', '로그인 상태와 서버 연결을 확인해주세요.');
+    }
   };
 
   const removeDraftMedia = (mediaId: number) => {
@@ -385,7 +637,7 @@ export default function CommunityScreen() {
     }));
   };
 
-  const submitPost = () => {
+  const submitPost = async () => {
     const title = draft.title.trim();
     const content = draft.content.trim();
     if (!title || !content) {
@@ -406,6 +658,8 @@ export default function CommunityScreen() {
       hashtags,
       images: [],
     };
+    if (editingPost && !await confirmAction('게시글 수정', '게시글을 수정할까요?', '수정')) return;
+
     void Promise.all(media.map(async (item, index) => {
       if (item.originalUri && !item.uri.startsWith('file:') && !item.uri.startsWith('content:')) {
         return { s3Key: item.originalUri, url: item.uri, sortOrder: index };
@@ -419,7 +673,9 @@ export default function CommunityScreen() {
         const nextPost = detailToPost(
           saved,
           courses,
-          editingPost ? { ...editingPost, isMine: true } : { ...summaryToPost(saved, courses), isMine: true },
+          editingPost ? { ...editingPost, isMine: true } : { ...summaryToPost(saved, courses, currentUserProfileImageUrl, currentUserNickname), isMine: true },
+          currentUserProfileImageUrl,
+          currentUserNickname,
         );
         setPosts((current) => editingPost
           ? current.map((post) => (post.id === editingPost.id ? nextPost : post))
@@ -439,6 +695,13 @@ export default function CommunityScreen() {
         style={styles.scroll}
         stickyHeaderIndices={[0]}
         showsVerticalScrollIndicator={false}
+        refreshControl={
+          <RefreshControl
+            refreshing={refreshing}
+            tintColor={COLORS.primary}
+            onRefresh={() => void refreshCommunity().catch(() => undefined)}
+          />
+        }
         contentContainerStyle={[styles.scrollContent, { paddingBottom: tabBarHeight + 96 }]}
       >
         <CommunityFilterBar
@@ -493,6 +756,13 @@ export default function CommunityScreen() {
     }
 
     const expanded = expandedPostIds.includes(selectedPost.id);
+    const authorAvatar = selectedPost.avatar ? (
+      <Image source={{ uri: selectedPost.avatar }} style={styles.avatar} />
+    ) : (
+      <View style={styles.avatarFallback}>
+        <Ionicons name="person" size={22} color={COLORS.primary} />
+      </View>
+    );
 
     return (
       <>
@@ -501,11 +771,18 @@ export default function CommunityScreen() {
           <ScrollView
             style={styles.scroll}
             showsVerticalScrollIndicator={false}
+            refreshControl={
+              <RefreshControl
+                refreshing={refreshing}
+                tintColor={COLORS.primary}
+                onRefresh={() => void refreshCommunity().catch(() => undefined)}
+              />
+            }
             contentContainerStyle={[styles.scrollContent, { paddingBottom: tabBarHeight + 24 }]}
           >
             <View style={styles.detailCard}>
               <View style={styles.authorRow}>
-                <Image source={{ uri: selectedPost.avatar }} style={styles.avatar} />
+                {authorAvatar}
                 <View style={styles.authorText}>
                   <Text style={styles.authorName}>{selectedPost.author}</Text>
                   <Text style={styles.postTime}>{selectedPost.createdAt}</Text>
@@ -568,6 +845,7 @@ export default function CommunityScreen() {
               onChangeSort={setCommentSort}
               onAddComment={addComment}
               onToggleCommentLike={(commentId) => toggleCommentLike(selectedPost.id, commentId)}
+              onOpenCommentMenu={openCommentMenu}
             />
           </ScrollView>
         </KeyboardAvoidingView>
@@ -604,6 +882,29 @@ export default function CommunityScreen() {
       {mode === 'detail' ? renderDetail() : null}
       {mode === 'form' ? renderForm() : null}
       <CommunityMediaViewerModal media={selectedMedia} onClose={() => setSelectedMedia(null)} />
+      <Modal visible={Boolean(editingComment)} transparent animationType="fade" onRequestClose={() => setEditingComment(null)}>
+        <Pressable style={styles.modalOverlay} onPress={() => setEditingComment(null)}>
+          <Pressable style={styles.commentEditModal} onPress={(event) => event.stopPropagation()}>
+            <Text style={styles.modalTitle}>댓글 수정</Text>
+            <TextInput
+              value={editingCommentText}
+              onChangeText={setEditingCommentText}
+              placeholder="댓글을 입력해주세요"
+              placeholderTextColor={COLORS.textMuted}
+              multiline
+              style={styles.commentEditInput}
+            />
+            <View style={styles.modalActions}>
+              <TouchableOpacity style={styles.modalCancelButton} onPress={() => setEditingComment(null)}>
+                <Text style={styles.modalCancelText}>취소</Text>
+              </TouchableOpacity>
+              <TouchableOpacity style={styles.modalSaveButton} onPress={() => void submitCommentEdit()}>
+                <Text style={styles.modalSaveText}>수정</Text>
+              </TouchableOpacity>
+            </View>
+          </Pressable>
+        </Pressable>
+      </Modal>
     </SafeAreaView>
   );
 }
@@ -700,6 +1001,14 @@ const styles = StyleSheet.create({
     borderRadius: 21,
     backgroundColor: COLORS.border,
   },
+  avatarFallback: {
+    width: 42,
+    height: 42,
+    borderRadius: 21,
+    backgroundColor: COLORS.primaryLight,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
   authorText: {
     flex: 1,
   },
@@ -795,5 +1104,62 @@ const styles = StyleSheet.create({
     color: COLORS.textSub,
     fontSize: 13,
     fontWeight: '800',
+  },
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.42)',
+    justifyContent: 'center',
+    padding: 24,
+  },
+  commentEditModal: {
+    backgroundColor: COLORS.white,
+    borderRadius: 16,
+    padding: 18,
+    gap: 12,
+  },
+  modalTitle: {
+    color: COLORS.text,
+    fontSize: 18,
+    fontWeight: '900',
+  },
+  commentEditInput: {
+    minHeight: 96,
+    borderWidth: 1,
+    borderColor: COLORS.border,
+    borderRadius: 12,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    color: COLORS.text,
+    textAlignVertical: 'top',
+  },
+  modalActions: {
+    flexDirection: 'row',
+    gap: 8,
+  },
+  modalCancelButton: {
+    flex: 1,
+    minHeight: 44,
+    borderRadius: 12,
+    backgroundColor: COLORS.bg,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  modalCancelText: {
+    color: COLORS.textSub,
+    fontSize: 14,
+    fontWeight: '800',
+  },
+  modalSaveButton: {
+    flex: 1,
+    minHeight: 44,
+    borderRadius: 12,
+    backgroundColor: COLORS.primary,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  modalSaveText: {
+    color: COLORS.white,
+    fontSize: 14,
+    fontWeight: '900',
   },
 });

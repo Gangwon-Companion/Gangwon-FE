@@ -1,5 +1,5 @@
 import React from 'react';
-import { StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
+import { Image, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 
 import { COMMENT_SORT_OPTIONS, COMMUNITY_COLORS as COLORS } from '../constants';
@@ -13,6 +13,7 @@ type Props = {
   onChangeSort: (sort: CommentSortOption) => void;
   onAddComment: () => void;
   onToggleCommentLike: (commentId: number) => void;
+  onOpenCommentMenu: (comment: CommunityComment) => void;
 };
 
 export default function CommunityCommentSection({
@@ -23,6 +24,7 @@ export default function CommunityCommentSection({
   onChangeSort,
   onAddComment,
   onToggleCommentLike,
+  onOpenCommentMenu,
 }: Props) {
   return (
     <View style={styles.commentSection}>
@@ -61,10 +63,21 @@ export default function CommunityCommentSection({
       </View>
 
       {comments.map((comment) => (
-        <View key={comment.id} style={styles.commentItem}>
-          <View style={styles.commentAvatar}>
-            <Text style={styles.commentInitial}>{comment.author.slice(0, 1)}</Text>
-          </View>
+        <TouchableOpacity
+          key={comment.id}
+          style={styles.commentItem}
+          activeOpacity={0.88}
+          onLongPress={() => {
+            if (comment.isMine) onOpenCommentMenu(comment);
+          }}
+        >
+          {comment.avatar ? (
+            <Image source={{ uri: comment.avatar }} style={styles.commentAvatarImage} />
+          ) : (
+            <View style={styles.commentAvatar}>
+              <Text style={styles.commentInitial}>{comment.author.slice(0, 1)}</Text>
+            </View>
+          )}
           <View style={styles.commentBody}>
             <View style={styles.commentMeta}>
               <Text style={styles.commentAuthor}>{comment.author}</Text>
@@ -86,7 +99,7 @@ export default function CommunityCommentSection({
               {comment.likeCount}
             </Text>
           </TouchableOpacity>
-        </View>
+        </TouchableOpacity>
       ))}
     </View>
   );
@@ -174,6 +187,12 @@ const styles = StyleSheet.create({
     backgroundColor: COLORS.primaryLight,
     alignItems: 'center',
     justifyContent: 'center',
+  },
+  commentAvatarImage: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    backgroundColor: COLORS.primaryLight,
   },
   commentInitial: {
     color: COLORS.primaryDark,

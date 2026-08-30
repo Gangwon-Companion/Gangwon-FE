@@ -10,7 +10,7 @@ import {
   View,
 } from 'react-native';
 import { NativeStackScreenProps } from '@react-navigation/native-stack';
-import { ArrowLeft, Eye, EyeOff, Image } from 'lucide-react-native';
+import { ArrowLeft, Eye, EyeOff } from 'lucide-react-native';
 import { colors } from '../../constants/colors';
 import { RootStackParamList } from '../../navigation/types';
 import { ApiError, parseApiError, saveAccessToken } from '../../api/auth';
@@ -139,7 +139,7 @@ export default function SignUpScreen({ navigation }: Props) {
         </Pressable>
 
         <Text style={styles.title}>회원가입</Text>
-        <Text style={styles.subtitle}>Travelin과 함께 여행을 시작하세요</Text>
+        <Text style={styles.subtitle}>강원동행과 함께 여행을 시작하세요</Text>
 
         <View style={styles.form}>
           <View>
@@ -219,19 +219,6 @@ export default function SignUpScreen({ navigation }: Props) {
               editable={!submitting}
             />
           </View>
-        </View>
-
-        <View style={styles.permissionCard}>
-          <View style={styles.permissionIconBox}>
-            <Image size={20} color={colors.primary} />
-          </View>
-          <View style={styles.permissionTextBox}>
-            <Text style={styles.permissionTitle}>갤러리 접근 권한</Text>
-            <Text style={styles.permissionDescription}>프로필 사진 업로드를 위한 권한이 필요합니다</Text>
-          </View>
-          <Pressable>
-            <Text style={styles.permissionAction}>허용</Text>
-          </Pressable>
         </View>
 
         <Pressable
@@ -338,44 +325,6 @@ const styles = StyleSheet.create({
   subButtonText: {
     color: colors.primary,
     fontSize: 13,
-    fontWeight: '700',
-  },
-  permissionCard: {
-    flexDirection: 'row',
-    alignItems: 'flex-start',
-    gap: 12,
-    backgroundColor: colors.white,
-    borderRadius: 18,
-    borderWidth: 1,
-    borderColor: colors.gray200,
-    padding: 16,
-    marginBottom: 24,
-  },
-  permissionIconBox: {
-    width: 40,
-    height: 40,
-    borderRadius: 10,
-    backgroundColor: colors.primaryLight,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  permissionTextBox: {
-    flex: 1,
-  },
-  permissionTitle: {
-    color: colors.text,
-    fontSize: 14,
-    fontWeight: '700',
-    marginBottom: 4,
-  },
-  permissionDescription: {
-    color: colors.gray500,
-    fontSize: 12,
-    lineHeight: 17,
-  },
-  permissionAction: {
-    color: colors.primary,
-    fontSize: 12,
     fontWeight: '700',
   },
   primaryButton: {

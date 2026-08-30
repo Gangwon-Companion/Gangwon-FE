@@ -52,6 +52,7 @@ export const MOCK_COMMUNITY_POSTS: CommunityPost[] = [
     saved: true,
     likeCount: 42,
     saveCount: 18,
+    commentCount: 2,
     comments: [
       {
         id: 1,
@@ -60,6 +61,7 @@ export const MOCK_COMMUNITY_POSTS: CommunityPost[] = [
         createdAt: '방금 전',
         createdAtMs: NOW_MS - 5 * 60 * 1000,
         liked: false,
+        isMine: false,
         likeCount: 6,
       },
       {
@@ -69,6 +71,7 @@ export const MOCK_COMMUNITY_POSTS: CommunityPost[] = [
         createdAt: '12분 전',
         createdAtMs: NOW_MS - 12 * 60 * 1000,
         liked: true,
+        isMine: false,
         likeCount: 12,
       },
     ],
@@ -96,6 +99,7 @@ export const MOCK_COMMUNITY_POSTS: CommunityPost[] = [
     saved: false,
     likeCount: 27,
     saveCount: 9,
+    commentCount: 1,
     comments: [
       {
         id: 3,
@@ -104,6 +108,7 @@ export const MOCK_COMMUNITY_POSTS: CommunityPost[] = [
         createdAt: '1시간 전',
         createdAtMs: NOW_MS - 60 * 60 * 1000,
         liked: false,
+        isMine: false,
         likeCount: 3,
       },
     ],
@@ -124,6 +129,7 @@ export const MOCK_COMMUNITY_POSTS: CommunityPost[] = [
     saved: false,
     likeCount: 64,
     saveCount: 31,
+    commentCount: 0,
     comments: [],
     createdAt: '3일 전',
     createdAtMs: NOW_MS - 3 * DAY_MS,

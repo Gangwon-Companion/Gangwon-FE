@@ -2,6 +2,7 @@ import React, { useEffect, useState } from 'react';
 import {
   ActivityIndicator,
   Alert,
+  Image,
   Platform,
   StyleSheet,
   Text,
@@ -16,6 +17,8 @@ import type { PlaceReview, ReviewPayload } from '../api';
 type Props = {
   reviews: PlaceReview[];
   reviewCount: number;
+  currentUserNickname?: string | null;
+  currentUserProfileImageUrl?: string | null;
   submitting: boolean;
   onCreate: (payload: ReviewPayload) => Promise<void>;
   onUpdate: (reviewId: number, payload: ReviewPayload) => Promise<void>;
@@ -63,6 +66,8 @@ function RatingPicker({ value, onChange }: { value: number; onChange: (value: nu
 export default function ReviewSection({
   reviews,
   reviewCount,
+  currentUserNickname,
+  currentUserProfileImageUrl,
   submitting,
   onCreate,
   onUpdate,
@@ -104,10 +109,22 @@ export default function ReviewSection({
       return;
     }
 
-    await onUpdate(reviewId, { content: trimmedContent, rating: editRating });
-    setEditingId(null);
-    setEditContent('');
-    setEditRating(5);
+    const runUpdate = async () => {
+      await onUpdate(reviewId, { content: trimmedContent, rating: editRating });
+      setEditingId(null);
+      setEditContent('');
+      setEditRating(5);
+    };
+
+    if (Platform.OS === 'web') {
+      if (globalThis.confirm('리뷰를 수정할까요?')) await runUpdate();
+      return;
+    }
+
+    Alert.alert('리뷰 수정', '리뷰를 수정할까요?', [
+      { text: '취소', style: 'cancel' },
+      { text: '수정', onPress: () => void runUpdate() },
+    ]);
   };
 
   const confirmDelete = (reviewId: number) => {
@@ -122,6 +139,19 @@ export default function ReviewSection({
       { text: '삭제', style: 'destructive', onPress: runDelete },
     ]);
   };
+
+  const renderReviewAvatar = (review: PlaceReview, canManageReview: boolean) => {
+    const profileImageUrl = review.profileImageUrl ?? (canManageReview ? currentUserProfileImageUrl : null);
+    return profileImageUrl ? (
+      <Image source={{ uri: profileImageUrl }} style={styles.reviewAvatar} />
+    ) : (
+      <View style={styles.reviewAvatarFallback}>
+        <Ionicons name="person" size={18} color={COLORS.primary} />
+      </View>
+    );
+  };
+
+  const normalizedCurrentNickname = currentUserNickname?.trim() ?? null;
 
   return (
     <View style={styles.section}>
@@ -151,17 +181,26 @@ export default function ReviewSection({
 
       {reviews.length > 0 ? (
         <View style={styles.reviewList}>
-          {reviews.map((review) => (
+          {reviews.map((review) => {
+            const canManageReview = Boolean(
+              normalizedCurrentNickname
+              && review.nickname.trim() === normalizedCurrentNickname,
+            );
+
+            return (
             <View key={review.reviewId} style={styles.reviewCard}>
               <View style={styles.reviewHeader}>
-                <Text style={styles.reviewNickname}>{review.nickname}</Text>
+                <View style={styles.reviewAuthor}>
+                  {renderReviewAvatar(review, canManageReview)}
+                  <Text style={styles.reviewNickname}>{review.nickname}</Text>
+                </View>
                 <View style={styles.reviewRating}>
                   <Ionicons name="star" size={13} color="#EAB308" />
                   <Text style={styles.reviewRatingText}>{review.rating.toFixed(1)}</Text>
                 </View>
               </View>
 
-              {editingId === review.reviewId ? (
+              {canManageReview && editingId === review.reviewId ? (
                 <View style={styles.editBox}>
                   <RatingPicker value={editRating} onChange={setEditRating} />
                   <TextInput
@@ -189,18 +228,21 @@ export default function ReviewSection({
                 <>
                   <Text style={styles.reviewContent}>{review.content}</Text>
                   <Text style={styles.reviewDate}>{formatDate(review.createdAt)}</Text>
-                  <View style={styles.reviewActions}>
-                    <TouchableOpacity style={styles.textAction} onPress={() => startEdit(review)}>
-                      <Text style={styles.textActionText}>수정</Text>
-                    </TouchableOpacity>
-                    <TouchableOpacity style={styles.textAction} onPress={() => confirmDelete(review.reviewId)}>
-                      <Text style={[styles.textActionText, styles.deleteText]}>삭제</Text>
-                    </TouchableOpacity>
-                  </View>
+                  {canManageReview ? (
+                    <View style={styles.reviewActions}>
+                      <TouchableOpacity style={styles.textAction} onPress={() => startEdit(review)}>
+                        <Text style={styles.textActionText}>수정</Text>
+                      </TouchableOpacity>
+                      <TouchableOpacity style={styles.textAction} onPress={() => confirmDelete(review.reviewId)}>
+                        <Text style={[styles.textActionText, styles.deleteText]}>삭제</Text>
+                      </TouchableOpacity>
+                    </View>
+                  ) : null}
                 </>
               )}
             </View>
-          ))}
+            );
+          })}
         </View>
       ) : (
         <Text style={styles.emptyText}>아직 등록된 리뷰가 없습니다.</Text>
@@ -260,6 +302,9 @@ const styles = StyleSheet.create({
   reviewList: { gap: 10 },
   reviewCard: { borderWidth: 1, borderColor: COLORS.border, borderRadius: 12, padding: 14, gap: 8 },
   reviewHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 12 },
+  reviewAuthor: { flex: 1, minWidth: 0, flexDirection: 'row', alignItems: 'center', gap: 8 },
+  reviewAvatar: { width: 34, height: 34, borderRadius: 17, backgroundColor: COLORS.border },
+  reviewAvatarFallback: { width: 34, height: 34, borderRadius: 17, backgroundColor: '#E3F4F2', alignItems: 'center', justifyContent: 'center' },
   reviewNickname: { color: COLORS.text, fontSize: 14, fontWeight: '800' },
   reviewRating: { flexDirection: 'row', alignItems: 'center', gap: 4 },
   reviewRatingText: { color: COLORS.textSub, fontSize: 12, fontWeight: '700' },

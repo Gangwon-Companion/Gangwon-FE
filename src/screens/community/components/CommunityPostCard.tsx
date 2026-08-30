@@ -31,14 +31,20 @@ export default function CommunityPostCard({
   onToggleLike,
   onToggleSave,
 }: Props) {
-  const previewComments = post.comments.slice(0, 2);
   const isLongCaption = post.content.length > 90;
   const location = post.course?.places?.[0] ?? '강원도';
+  const avatar = post.avatar ? (
+    <Image source={{ uri: post.avatar }} style={styles.avatar} />
+  ) : (
+    <View style={styles.avatarFallback}>
+      <Ionicons name="person" size={22} color={COLORS.accent} />
+    </View>
+  );
 
   return (
     <View style={styles.card}>
       <TouchableOpacity style={styles.header} onPress={() => onOpenDetail(post.id)} activeOpacity={0.85}>
-        <Image source={{ uri: post.avatar }} style={styles.avatar} />
+        {avatar}
         <View style={styles.headerCopy}>
           <Text style={styles.authorName} numberOfLines={1}>{post.author}</Text>
           <Text style={styles.meta} numberOfLines={1}>{location} · {post.createdAt}</Text>
@@ -63,35 +69,21 @@ export default function CommunityPostCard({
           </TouchableOpacity>
           <TouchableOpacity style={styles.actionButton} onPress={() => onOpenDetail(post.id)} accessibilityLabel="댓글 보기">
             <Ionicons name="chatbubble-outline" size={24} color={COLORS.text} />
-            <Text style={styles.actionCount}>{post.comments.length}</Text>
+            <Text style={styles.actionCount}>{post.commentCount}</Text>
           </TouchableOpacity>
           <TouchableOpacity style={styles.bookmarkButton} onPress={() => onToggleSave(post.id)} accessibilityLabel="게시물 저장">
             <Ionicons name={post.saved ? 'bookmark' : 'bookmark-outline'} size={24} color={post.saved ? COLORS.accent : COLORS.text} />
           </TouchableOpacity>
         </View>
 
-        <View style={styles.proofRow}>
-          <Image source={{ uri: post.avatar }} style={styles.miniAvatar} />
-          <Text style={styles.proofText}><Text style={styles.semibold}>{post.author}</Text>님 외 여러 명이 좋아합니다</Text>
-        </View>
-
         <TouchableOpacity onPress={() => onOpenDetail(post.id)} activeOpacity={0.9}>
           <Text style={styles.caption} numberOfLines={expanded ? undefined : 2}>
-            <Text style={styles.semibold}>{post.author}</Text>{' '}{post.content}
+            {post.content}
           </Text>
           {isLongCaption ? (
             <Text style={styles.moreText} onPress={() => onToggleExpanded(post.id)}>{expanded ? '접기' : '더 보기'}</Text>
           ) : null}
         </TouchableOpacity>
-
-        {previewComments.map((comment) => (
-          <TouchableOpacity key={comment.id} style={styles.commentRow} onPress={() => onOpenDetail(post.id)}>
-            <Text style={styles.commentText} numberOfLines={1}>
-              <Text style={styles.semibold}>{comment.author}</Text>{' '}{comment.content}
-            </Text>
-            <Ionicons name="heart-outline" size={16} color={COLORS.muted} />
-          </TouchableOpacity>
-        ))}
       </View>
     </View>
   );
@@ -112,6 +104,7 @@ const styles = StyleSheet.create({
   },
   header: { minHeight: 68, flexDirection: 'row', alignItems: 'center', paddingHorizontal: 14, paddingVertical: 12 },
   avatar: { width: 44, height: 44, borderRadius: 22, backgroundColor: COLORS.border },
+  avatarFallback: { width: 44, height: 44, borderRadius: 22, backgroundColor: '#E3F4F2', alignItems: 'center', justifyContent: 'center' },
   headerCopy: { flex: 1, marginLeft: 10 },
   authorName: { color: COLORS.text, fontSize: 15, fontWeight: '600' },
   meta: { color: COLORS.muted, fontSize: 12, marginTop: 3 },
@@ -124,12 +117,6 @@ const styles = StyleSheet.create({
   actionButton: { flexDirection: 'row', alignItems: 'center', gap: 6 },
   actionCount: { color: COLORS.text, fontSize: 13 },
   bookmarkButton: { marginLeft: 'auto' },
-  proofRow: { minHeight: 24, flexDirection: 'row', alignItems: 'center', marginBottom: 8 },
-  miniAvatar: { width: 16, height: 16, borderRadius: 8, marginRight: 7 },
-  proofText: { color: COLORS.muted, fontSize: 14 },
-  semibold: { color: COLORS.text, fontWeight: '600' },
-  caption: { color: COLORS.text, fontSize: 14, lineHeight: 20 },
+  caption: { color: COLORS.text, fontSize: 14, lineHeight: 20, marginBottom: 12 },
   moreText: { color: COLORS.muted, fontSize: 14, lineHeight: 20 },
-  commentRow: { minHeight: 24, flexDirection: 'row', alignItems: 'center', gap: 8, marginTop: 4 },
-  commentText: { flex: 1, color: COLORS.text, fontSize: 14, lineHeight: 20 },
 });

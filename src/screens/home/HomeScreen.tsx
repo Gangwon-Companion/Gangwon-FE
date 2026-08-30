@@ -3,7 +3,6 @@ import {
   View,
   Text,
   ScrollView,
-  TextInput,
   TouchableOpacity,
   Image,
   StyleSheet,
@@ -15,24 +14,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { useNavigation } from '@react-navigation/native';
 import { useBottomTabBarHeight } from '@react-navigation/bottom-tabs';
-import { getAccessToken } from '../../api/auth';
 import { getApiBaseUrl, requestHeaders } from './api';
-
-type PopularPeriod = 'today' | 'week' | 'month';
-
-type HotplaceItem = {
-  hotplaceId: number;
-  displayName: string;
-  areaName: string | null;
-  signguName: string | null;
-  congestionRate: number | null;
-  baseDate: string | null;
-};
-
-type HotplaceListResponse = {
-  totalCount: number;
-  items: HotplaceItem[];
-};
 
 type PromotionBanner = {
   id: number;
@@ -65,30 +47,32 @@ const COLORS = {
 };
 
 const TAB_ITEMS = [
-  { label: '테마', route: 'ThemeTab' },
-  { label: '숙소', route: 'HotelsTab' },
-  { label: '음식점', route: 'RestaurantsTab' },
+  {
+    label: '테마별 관광지 보기',
+    description: '여행 취향에 맞는 강원 관광지를 찾아보세요',
+    icon: 'sparkles-outline',
+    route: 'ThemeTab',
+  },
+  {
+    label: '숙소',
+    description: '강원 지역 숙소 목록을 확인해보세요',
+    icon: 'bed-outline',
+    route: 'HotelsTab',
+  },
+  {
+    label: '음식점',
+    description: '식당과 카페 정보를 함께 둘러보세요',
+    icon: 'restaurant-outline',
+    route: 'RestaurantsTab',
+  },
 ] as const;
-
-const PERIOD_OPTIONS: Array<{ key: PopularPeriod; label: string }> = [
-  { key: 'today', label: '오늘' },
-  { key: 'week', label: '일주일' },
-  { key: 'month', label: '한달' },
-];
 
 export default function HomeScreen() {
   const navigation = useNavigation<any>();
   const tabBarHeight = useBottomTabBarHeight();
-  const [activeTab, setActiveTab] = useState(0);
-  const [searchText, setSearchText] = useState('');
-  const [popularPeriod, setPopularPeriod] = useState<PopularPeriod>('today');
-  const [popularPlaces, setPopularPlaces] = useState<HotplaceItem[]>([]);
-  const [popularLoading, setPopularLoading] = useState(true);
-  const [popularError, setPopularError] = useState<string | null>(null);
   const [banners, setBanners] = useState<PromotionBanner[]>([]);
   const [promotionsLoading, setPromotionsLoading] = useState(true);
   const [promotionsError, setPromotionsError] = useState<string | null>(null);
-  const [searchSaving, setSearchSaving] = useState(false);
 
   const openLink = useCallback(async (url: string | null) => {
     if (!url) return;
@@ -98,73 +82,6 @@ export default function HomeScreen() {
       console.warn('링크를 열지 못했습니다.', error);
     }
   }, []);
-
-  const saveSearchHistory = useCallback(async () => {
-    const keyword = searchText.trim();
-    if (!keyword || searchSaving) return;
-
-    setSearchSaving(true);
-    try {
-      const [apiBaseUrl, token] = await Promise.all([getApiBaseUrl(), getAccessToken()]);
-      if (!token) throw new Error('검색 이력 저장은 로그인이 필요합니다.');
-
-      const historyResponse = await fetch(`${apiBaseUrl}/api/v1/search-history`, {
-        method: 'POST',
-        headers: {
-          ...requestHeaders,
-          'Content-Type': 'application/json',
-          Authorization: `Bearer ${token}`,
-        },
-        body: JSON.stringify({ keyword }),
-      });
-      if (!historyResponse.ok) throw new Error(`검색 이력 저장 실패 (${historyResponse.status})`);
-    } catch (error) {
-      console.warn(error instanceof Error ? error.message : '검색 이력을 저장하지 못했습니다.');
-    } finally {
-      setSearchSaving(false);
-    }
-  }, [searchSaving, searchText]);
-
-  const openNaverMap = useCallback(async (place: HotplaceItem) => {
-    const query = [place.displayName, place.areaName].filter(Boolean).join(' ');
-    const url = `https://map.naver.com/v5/search/${encodeURIComponent(query)}`;
-
-    try {
-      await Linking.openURL(url);
-    } catch (error) {
-      console.warn('네이버 지도를 열지 못했습니다.', error);
-    }
-  }, []);
-
-  const loadPopularPlaces = useCallback(async (period: PopularPeriod, signal?: AbortSignal) => {
-    setPopularLoading(true);
-    setPopularError(null);
-
-    try {
-      const apiBaseUrl = await getApiBaseUrl(signal);
-      const response = await fetch(`${apiBaseUrl}/api/v1/promotions/hotplace?period=${period}`, {
-        headers: requestHeaders,
-        signal,
-      });
-      if (!response.ok) throw new Error(`인기 여행지 요청 실패 (${response.status})`);
-
-      const data: HotplaceListResponse = await response.json();
-      if (signal?.aborted) return;
-      setPopularPlaces(data.items);
-    } catch (loadError) {
-      if (signal?.aborted) return;
-      setPopularError(loadError instanceof Error ? loadError.message : '인기 여행지를 불러오지 못했습니다.');
-    } finally {
-      if (!signal?.aborted) setPopularLoading(false);
-    }
-  }, []);
-
-  useEffect(() => {
-    const controller = new AbortController();
-    void loadPopularPlaces(popularPeriod, controller.signal);
-
-    return () => controller.abort();
-  }, [popularPeriod, loadPopularPlaces]);
 
   useEffect(() => {
     const controller = new AbortController();
@@ -207,161 +124,63 @@ export default function HomeScreen() {
       >
         <View style={styles.header}>
           <View style={styles.headerTop}>
-            <View>
-              <Text style={styles.greeting}>안녕하세요, 여행자님</Text>
+            <View style={styles.titleBox}>
               <Text style={styles.headerTitle}>어디로 떠나볼까요?</Text>
+              <Text style={styles.headerDescription}>
+                테마 관광지, 숙소, 음식점 정보를 한곳에서 확인해보세요.
+              </Text>
             </View>
-            <View style={styles.profileArea}>
-              <View style={styles.pointBox}>
-                <Text style={styles.pointLabel}>포인트</Text>
-                <Text style={styles.pointValue}>2,340</Text>
-              </View>
-              <Image
-                source={{ uri: 'https://images.unsplash.com/photo-1472099645785-5658abf4ff4e?w=100&h=100&fit=crop' }}
-                style={styles.avatar}
-              />
-            </View>
-          </View>
-
-          <View style={styles.searchBar}>
-            {searchSaving
-              ? <ActivityIndicator size="small" color={COLORS.primary} style={styles.searchIcon} />
-              : <Ionicons name="search-outline" size={20} color={COLORS.textMuted} style={styles.searchIcon} />}
-            <TextInput
-              style={styles.searchInput}
-              placeholder="여행지, 숙소를 검색하세요..."
-              placeholderTextColor={COLORS.textMuted}
-              value={searchText}
-              onChangeText={setSearchText}
-              returnKeyType="search"
-              onSubmitEditing={() => void saveSearchHistory()}
-              editable={!searchSaving}
-            />
+            <Text style={styles.brandName}>강원동행</Text>
           </View>
         </View>
 
         <View style={styles.content}>
-          <ScrollView
-            horizontal
-            showsHorizontalScrollIndicator={false}
-            style={styles.tabScroll}
-            contentContainerStyle={styles.tabContent}
-          >
+          <View style={styles.actionGrid}>
             {TAB_ITEMS.map((tab, index) => (
               <TouchableOpacity
                 key={tab.route}
-                onPress={() => {
-                  setActiveTab(index);
-                  navigation.navigate(tab.route);
-                }}
-                style={[styles.tabBtn, activeTab === index && styles.tabBtnActive]}
+                onPress={() => navigation.navigate(tab.route)}
+                style={[styles.actionCard, index === 0 && styles.actionCardWide]}
+                activeOpacity={0.86}
               >
-                <Text style={[styles.tabText, activeTab === index && styles.tabTextActive]}>
-                  {tab.label}
-                </Text>
+                <View style={styles.actionIcon}>
+                  <Ionicons name={tab.icon as any} size={22} color={COLORS.primary} />
+                </View>
+                <View style={styles.actionTextBox}>
+                  <Text style={styles.actionTitle}>{tab.label}</Text>
+                  <Text style={styles.actionDescription}>{tab.description}</Text>
+                </View>
+                <Ionicons name="chevron-forward" size={20} color={COLORS.textMuted} />
               </TouchableOpacity>
             ))}
-          </ScrollView>
-
-          <View style={styles.card}>
-            <View style={styles.upcomingHeader}>
-              <View style={styles.calendarIcon}>
-                <Ionicons name="calendar-outline" size={24} color={COLORS.primary} />
-              </View>
-              <View style={{ flex: 1 }}>
-                <Text style={styles.cardTitle}>다가오는 여행</Text>
-                <Text style={styles.cardSub}>이번 주</Text>
-              </View>
-            </View>
-            <Text style={styles.dateText}>2026년 6월 15일 - 6월 18일</Text>
-            <View style={styles.upcomingBtns}>
-              <TouchableOpacity style={styles.btnPrimary}>
-                <Text style={styles.btnPrimaryText}>자세히 보기</Text>
-              </TouchableOpacity>
-              <TouchableOpacity style={styles.btnSecondary}>
-                <Text style={styles.btnSecondaryText}>수정</Text>
-              </TouchableOpacity>
-            </View>
           </View>
 
-          {promotionsLoading && <ActivityIndicator color={COLORS.primary} style={styles.promotionLoading} />}
+          {promotionsLoading && <ActivityIndicator color={COLORS.primary} style={styles.bannerLoading} />}
           {!promotionsLoading && banners.length > 0 && (
-            <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.bannerScroll}>
-              {banners.map((banner) => (
-                <TouchableOpacity key={banner.id} activeOpacity={banner.linkUrl ? 0.85 : 1}
-                  onPress={() => void openLink(banner.linkUrl)} style={styles.promoBanner}>
-                  {banner.imageUrl ? <Image source={{ uri: banner.imageUrl }} style={styles.bannerImage} /> : null}
-                  <View style={styles.bannerOverlay} />
-                  <View style={styles.bannerContent}>
-                    <Text style={styles.bannerMeta}>{banner.region} · {banner.category}</Text>
-                    <Text style={styles.promoTitle} numberOfLines={1}>{banner.title}</Text>
-                    <Text style={styles.promoSub} numberOfLines={2}>{banner.description}</Text>
-                    <Text style={styles.bannerDate}>{banner.startDate} ~ {banner.endDate}</Text>
-                  </View>
-                </TouchableOpacity>
-              ))}
-            </ScrollView>
+            <View style={styles.bannerSection}>
+              <Text style={styles.sectionTitle}>장소 배너</Text>
+              <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.bannerScroll}>
+                {banners.map((banner) => (
+                  <TouchableOpacity
+                    key={banner.id}
+                    activeOpacity={banner.linkUrl ? 0.85 : 1}
+                    onPress={() => void openLink(banner.linkUrl)}
+                    style={styles.promoBanner}
+                  >
+                    {banner.imageUrl ? <Image source={{ uri: banner.imageUrl }} style={styles.bannerImage} /> : null}
+                    <View style={styles.bannerOverlay} />
+                    <View style={styles.bannerContent}>
+                      <Text style={styles.bannerMeta}>{banner.region} · {banner.category}</Text>
+                      <Text style={styles.promoTitle} numberOfLines={1}>{banner.title}</Text>
+                      <Text style={styles.promoSub} numberOfLines={2}>{banner.description}</Text>
+                      <Text style={styles.bannerDate}>{banner.startDate} ~ {banner.endDate}</Text>
+                    </View>
+                  </TouchableOpacity>
+                ))}
+              </ScrollView>
+            </View>
           )}
           {!promotionsLoading && promotionsError && <Text style={styles.promotionError}>{promotionsError}</Text>}
-
-          <View style={styles.sectionHeader}>
-            <Text style={styles.sectionTitle}>인기 여행지</Text>
-            <View style={styles.periodSelector}>
-              {PERIOD_OPTIONS.map((option) => {
-                const isActive = popularPeriod === option.key;
-
-                return (
-                  <TouchableOpacity
-                    key={option.key}
-                    onPress={() => setPopularPeriod(option.key)}
-                    style={[styles.periodChip, isActive && styles.periodChipActive]}
-                  >
-                    <Text style={[styles.periodChipText, isActive && styles.periodChipTextActive]}>
-                      {option.label}
-                    </Text>
-                  </TouchableOpacity>
-                );
-              })}
-            </View>
-          </View>
-
-          {popularLoading && <ActivityIndicator size="large" color={COLORS.primary} style={styles.popularLoading} />}
-
-          {!popularLoading && popularError && (
-            <View style={styles.popularMessageBox}>
-              <Text style={styles.popularErrorText}>{popularError}</Text>
-              <TouchableOpacity
-                style={styles.popularRetryButton}
-                onPress={() => void loadPopularPlaces(popularPeriod)}
-              >
-                <Text style={styles.popularRetryButtonText}>다시 시도</Text>
-              </TouchableOpacity>
-            </View>
-          )}
-
-          {!popularLoading && !popularError && popularPlaces.length === 0 && (
-            <Text style={styles.popularEmptyText}>표시할 인기 여행지가 없습니다.</Text>
-          )}
-
-          {!popularLoading && !popularError && popularPlaces.map((place) => (
-            <TouchableOpacity
-              key={place.hotplaceId}
-              activeOpacity={0.85}
-              onPress={() => void openNaverMap(place)}
-              style={styles.placeCard}
-            >
-              <View style={[styles.placeImage, styles.placeImagePlaceholder]}>
-                <Ionicons name="map-outline" size={36} color={COLORS.textMuted} />
-              </View>
-              <View style={styles.placeInfo}>
-                <Text style={styles.placeTitle}>{place.displayName}</Text>
-                <View style={styles.placeRow}>
-                  <Text style={styles.placeLocation}>{place.areaName}</Text>
-                </View>
-              </View>
-            </TouchableOpacity>
-          ))}
-
         </View>
       </ScrollView>
     </SafeAreaView>
@@ -392,7 +211,16 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    marginBottom: 20,
+  },
+  titleBox: {
+    flex: 1,
+    minWidth: 0,
+  },
+  brandName: {
+    color: COLORS.white,
+    fontSize: 22,
+    fontWeight: '800',
+    marginLeft: 16,
   },
   greeting: {
     color: 'rgba(255,255,255,0.9)',
@@ -401,143 +229,67 @@ const styles = StyleSheet.create({
   },
   headerTitle: {
     color: COLORS.white,
-    fontSize: 22,
-    fontWeight: '600',
+    fontSize: 26,
+    fontWeight: '800',
+    lineHeight: 34,
   },
-  profileArea: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 12,
-  },
-  pointBox: {
-    alignItems: 'flex-end',
-  },
-  pointLabel: {
-    color: 'rgba(255,255,255,0.9)',
-    fontSize: 11,
-  },
-  pointValue: {
-    color: COLORS.white,
-    fontSize: 18,
-    fontWeight: '600',
-  },
-  avatar: {
-    width: 48,
-    height: 48,
-    borderRadius: 24,
-    backgroundColor: COLORS.white,
-  },
-  searchBar: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: COLORS.white,
-    borderRadius: 16,
-    paddingHorizontal: 16,
-    paddingVertical: 12,
-  },
-  searchIcon: {
-    marginRight: 8,
-  },
-  searchInput: {
-    flex: 1,
-    fontSize: 15,
-    color: COLORS.text,
-    padding: 0,
+  headerDescription: {
+    color: 'rgba(255,255,255,0.88)',
+    fontSize: 14,
+    lineHeight: 21,
+    marginTop: 8,
   },
   content: {
     paddingHorizontal: 24,
     paddingTop: 24,
   },
-  tabScroll: {
-    marginBottom: 20,
+  actionGrid: {
+    gap: 12,
+    marginBottom: 24,
   },
-  tabContent: {
-    gap: 8,
-  },
-  tabBtn: {
-    paddingHorizontal: 20,
-    paddingVertical: 10,
-    borderRadius: 100,
-    backgroundColor: COLORS.white,
-  },
-  tabBtnActive: {
-    backgroundColor: COLORS.primary,
-  },
-  tabText: {
-    fontSize: 14,
-    color: COLORS.textSub,
-    fontWeight: '500',
-  },
-  tabTextActive: {
-    color: COLORS.white,
-  },
-  card: {
+  actionCard: {
+    minHeight: 86,
     backgroundColor: COLORS.white,
     borderRadius: 16,
-    padding: 16,
-    marginBottom: 24,
+    paddingHorizontal: 16,
+    paddingVertical: 15,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 13,
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 1 },
     shadowOpacity: 0.06,
     shadowRadius: 4,
     elevation: 2,
   },
-  upcomingHeader: {
-    flexDirection: 'row',
-    alignItems: 'flex-start',
-    gap: 12,
-    marginBottom: 12,
+  actionCardWide: {
+    minHeight: 96,
   },
-  calendarIcon: {
-    width: 48,
-    height: 48,
-    borderRadius: 12,
+  actionIcon: {
+    width: 44,
+    height: 44,
+    borderRadius: 14,
     backgroundColor: COLORS.primaryLight,
     justifyContent: 'center',
     alignItems: 'center',
   },
-  cardTitle: {
-    fontSize: 16,
-    fontWeight: '600',
-    color: COLORS.text,
-    marginBottom: 2,
-  },
-  cardSub: {
-    fontSize: 13,
-    color: COLORS.textSub,
-  },
-  dateText: {
-    fontSize: 13,
-    color: COLORS.textSub,
-    marginBottom: 12,
-  },
-  upcomingBtns: {
-    flexDirection: 'row',
-    gap: 8,
-  },
-  btnPrimary: {
+  actionTextBox: {
     flex: 1,
-    paddingVertical: 10,
-    backgroundColor: COLORS.primary,
-    borderRadius: 12,
-    alignItems: 'center',
+    minWidth: 0,
   },
-  btnPrimaryText: {
-    color: COLORS.white,
-    fontSize: 14,
-    fontWeight: '500',
+  actionTitle: {
+    fontSize: 16,
+    fontWeight: '800',
+    color: COLORS.text,
+    marginBottom: 5,
   },
-  btnSecondary: {
-    paddingHorizontal: 16,
-    paddingVertical: 10,
-    backgroundColor: COLORS.bg,
-    borderRadius: 12,
-    alignItems: 'center',
-  },
-  btnSecondaryText: {
+  actionDescription: {
     color: COLORS.textSub,
-    fontSize: 14,
-    fontWeight: '500',
+    fontSize: 13,
+    lineHeight: 18,
+  },
+  bannerSection: {
+    marginTop: 2,
   },
   promoBanner: {
     backgroundColor: COLORS.primary,
@@ -580,7 +332,7 @@ const styles = StyleSheet.create({
     fontSize: 13,
     marginBottom: 16,
   },
-  promotionLoading: { marginVertical: 32 },
+  bannerLoading: { marginVertical: 32 },
   promotionError: { color: COLORS.red, fontSize: 13, textAlign: 'center', marginBottom: 24 },
   sectionHeader: {
     flexDirection: 'row',

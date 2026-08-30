@@ -7,8 +7,13 @@ export type CommunityApiImage = {
 };
 
 export type CommunityApiComment = {
-  id: number;
+  id?: number;
+  commentId?: number;
+  postId?: number;
   author: string;
+  nickname?: string;
+  profileImageUrl?: string | null;
+  authorProfileImageUrl?: string | null;
   content: string;
   createdAt: string;
   likeCount: number;
@@ -17,11 +22,17 @@ export type CommunityApiComment = {
 };
 
 export type CommunityApiPostSummary = {
-  id: number;
+  id?: number;
+  postId?: number;
   title: string;
+  content?: string;
   author: string;
+  nickname?: string;
+  profileImageUrl?: string | null;
+  authorProfileImageUrl?: string | null;
   viewCount: number;
   likeCount: number;
+  commentCount?: number;
   imageCount: number;
   courseId: number | null;
   isMine: boolean;
@@ -35,7 +46,8 @@ export type CommunityApiPostSummary = {
 export type CommunityApiPostDetail = CommunityApiPostSummary & {
   content: string;
   updatedAt: string;
-  images: CommunityApiImage[];
+  images?: CommunityApiImage[];
+  mediaUrls?: string[];
   comments: CommunityApiComment[];
 };
 
@@ -123,6 +135,17 @@ export function createCommunityComment(postId: number, content: string) {
     method: 'POST',
     body: JSON.stringify({ content }),
   });
+}
+
+export function updateCommunityComment(commentId: number, content: string) {
+  return request<CommunityApiComment>(`/api/v1/community/comments/${commentId}`, {
+    method: 'PUT',
+    body: JSON.stringify({ content }),
+  });
+}
+
+export function deleteCommunityComment(commentId: number) {
+  return request<void>(`/api/v1/community/comments/${commentId}`, { method: 'DELETE' });
 }
 
 export function likeCommunityPost(postId: number, liked: boolean) {

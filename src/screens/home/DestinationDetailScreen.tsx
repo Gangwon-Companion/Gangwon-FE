@@ -19,6 +19,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { NativeStackScreenProps } from '@react-navigation/native-stack';
 
 import { RootStackParamList } from '../../navigation/types';
+import { getMyPage, getMyReviews } from '../mypage/api';
 import {
   ApiResponseError,
   createPlaceReview,
@@ -106,6 +107,8 @@ export default function DestinationDetailScreen({ navigation, route }: Props) {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [reviewSubmitting, setReviewSubmitting] = useState(false);
+  const [currentUserNickname, setCurrentUserNickname] = useState<string | null>(null);
+  const [currentUserProfileImageUrl, setCurrentUserProfileImageUrl] = useState<string | null>(null);
 
   const loadDetail = useCallback(async (signal?: AbortSignal) => {
     setLoading(true);
@@ -174,6 +177,25 @@ export default function DestinationDetailScreen({ navigation, route }: Props) {
     return () => controller.abort();
   }, [loadDetail]);
 
+  useEffect(() => {
+    const controller = new AbortController();
+    void getMyPage(controller.signal)
+      .then((data) => {
+        if (!controller.signal.aborted) {
+          setCurrentUserNickname(data.nickname);
+          setCurrentUserProfileImageUrl(data.profileImageUrl);
+        }
+      })
+      .catch(() => {
+        if (!controller.signal.aborted) {
+          setCurrentUserNickname(null);
+          setCurrentUserProfileImageUrl(null);
+        }
+      });
+
+    return () => controller.abort();
+  }, []);
+
   const imageUrls = useMemo(() => {
     const detailImages = detail?.destinationImageList?.map((item) => (
       item.originImgUrl
@@ -207,7 +229,7 @@ export default function DestinationDetailScreen({ navigation, route }: Props) {
     setReviewSubmitting(true);
     try {
       await action();
-      await loadDetail();
+      await Promise.allSettled([loadDetail(), getMyPage(), getMyReviews()]);
     } catch (reviewError) {
       const message = reviewError instanceof ApiResponseError && reviewError.status === 401
         ? '로그인 후 이용할 수 있습니다.'
@@ -387,6 +409,8 @@ export default function DestinationDetailScreen({ navigation, route }: Props) {
               <ReviewSection
                 reviews={reviews}
                 reviewCount={reviewCount}
+                currentUserNickname={currentUserNickname}
+                currentUserProfileImageUrl={currentUserProfileImageUrl}
                 submitting={reviewSubmitting}
                 onCreate={createReview}
                 onUpdate={updateReview}
