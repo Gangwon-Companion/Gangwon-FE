@@ -1,18 +1,19 @@
+import { Alert } from '../../utils/alert';
 import React, { useState, useEffect } from 'react';
 import {
   View,
   Text,
   StyleSheet,
   TouchableOpacity,
-  Alert,
   Linking,
   Platform,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { WebView } from 'react-native-webview';
+import MapCanvas from '../../components/MapCanvas';
+import { openWebMap } from '../../utils/webMap';
 import * as Location from 'expo-location';
 
-const NAVER_CLIENT_ID = '3qp69wrk19';
+const NAVER_CLIENT_ID = process.env.EXPO_PUBLIC_NAVER_MAP_CLIENT_ID?.trim() || '3qp69wrk19';
 
 // 테스트용 목적지 (춘천 닭갈비골목)
 const TEST_GOAL = { lat: 37.8813, lng: 127.7298, name: '춘천 닭갈비골목' };
@@ -57,6 +58,7 @@ export default function MapTestScreen() {
   const [location, setLocation] = useState<{ lat: number; lng: number } | null>(null);
 
   useEffect(() => {
+    if (Platform.OS === 'web') return;
     (async () => {
       const { status } = await Location.requestForegroundPermissionsAsync();
       if (status !== 'granted') {
@@ -65,10 +67,11 @@ export default function MapTestScreen() {
       }
       const pos = await Location.getCurrentPositionAsync({});
       setLocation({ lat: pos.coords.latitude, lng: pos.coords.longitude });
-    })();
+    })().catch(() => Alert.alert('위치 확인 실패', '현재 위치를 가져오지 못했습니다.'));
   }, []);
 
   const handleFindRoute = async () => {
+    if (Platform.OS === 'web') { openWebMap(TEST_GOAL.name); return; }
     if (!location) {
       Alert.alert('위치 확인 중', '현재 위치를 아직 가져오는 중입니다. 잠시 후 다시 시도해 주세요.');
       return;
@@ -107,26 +110,19 @@ export default function MapTestScreen() {
         <Text style={styles.title}>지도 길찾기 테스트</Text>
         <Text style={styles.subtitle}>
           목적지: {TEST_GOAL.name}
-          {location ? '' : '  (위치 가져오는 중…)'}
+          {location || Platform.OS === 'web' ? '' : '  (위치 가져오는 중…)'}
         </Text>
       </View>
 
-      <WebView
-        source={{ html: mapHTML, baseUrl: 'https://map.naver.com' }}
-        style={styles.map}
-        javaScriptEnabled
-        domStorageEnabled
-        originWhitelist={['*']}
-        mixedContentMode="always"
-      />
+      <MapCanvas html={mapHTML} />
 
       <View style={styles.bottomBar}>
         <TouchableOpacity
-          style={[styles.routeBtn, !location && styles.routeBtnDisabled]}
+          style={[styles.routeBtn, Platform.OS !== 'web' && !location && styles.routeBtnDisabled]}
           onPress={handleFindRoute}
-          disabled={!location}
+          disabled={Platform.OS !== 'web' && !location}
         >
-          <Text style={styles.routeBtnText}>네이버 지도에서 길찾기</Text>
+          <Text style={styles.routeBtnText}>{Platform.OS === 'web' ? '네이버 웹 지도에서 보기' : '네이버 지도에서 길찾기'}</Text>
         </TouchableOpacity>
       </View>
     </SafeAreaView>

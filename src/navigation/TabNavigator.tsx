@@ -3,6 +3,7 @@ import { Platform, Pressable, StyleSheet, Text, View } from 'react-native';
 import { createBottomTabNavigator, BottomTabBarProps } from '@react-navigation/bottom-tabs';
 import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { useDesktopLayout } from '../hooks/useContentWidth';
 
 import HomeScreen from '../screens/home/HomeScreen';
 import MyTravelCoursesScreen from '../screens/travel/MyTravelCoursesScreen';
@@ -10,13 +11,8 @@ import AIRecommendScreen from '../screens/travel/AIRecommendScreen';
 import CommunityScreen from '../screens/community/CommunityScreen';
 import MyPageScreen from '../screens/mypage/MyPageScreen';
 
-export type TabParamList = {
-  홈: undefined;
-  내여행: undefined;
-  AI추천: undefined;
-  커뮤니티: { postId?: number } | undefined;
-  마이: undefined;
-};
+import type { TabParamList } from './types';
+export type { TabParamList } from './types';
 
 const COLORS = {
   primary: '#008A9A',
@@ -121,10 +117,11 @@ function CustomTabBar({ state, descriptors, navigation }: BottomTabBarProps) {
 const Tab = createBottomTabNavigator<TabParamList>();
 
 export default function TabNavigator() {
+  const desktop = useDesktopLayout();
   return (
     <Tab.Navigator
       screenOptions={{ headerShown: false }}
-      tabBar={(props) => <CustomTabBar {...props} />}
+      tabBar={(props) => desktop ? null : <CustomTabBar {...props} />}
     >
       {TAB_CONFIG.map((tab) => (
         <Tab.Screen

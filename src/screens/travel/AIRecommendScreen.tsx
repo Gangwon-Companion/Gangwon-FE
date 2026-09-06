@@ -1,4 +1,4 @@
-import React, { useRef, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import {
   KeyboardAvoidingView,
   Platform,
@@ -12,6 +12,8 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { useNavigation } from '@react-navigation/native';
+import { useDesktopLayout } from '../../hooks/useContentWidth';
+import { RecommendationError, recommendationResponseError } from './recommendationError';
 import {
   buildRequestHeaders,
   DestinationListItem,
@@ -105,6 +107,7 @@ function inferFollowUpFields(answer: string, missingFields: string[]): CourseReq
 const QUICK_QUESTIONS = ['바다 보러 가고 싶어요', '아이와 함께 여행', '조용한 힐링 여행'];
 
 export default function AIRecommendScreen() {
+  const desktop = useDesktopLayout();
   const navigation = useNavigation<any>();
   const [input, setInput] = useState('');
   const [recommendations, setRecommendations] = useState<DestinationListItem[]>([]);
@@ -124,12 +127,23 @@ export default function AIRecommendScreen() {
   const [recommendationRetryAvailable, setRecommendationRetryAvailable] = useState(false);
   const [messages, setMessages] = useState<Message[]>([INITIAL_MESSAGE]);
   const scrollRef = useRef<ScrollView>(null);
+  const activeRequest = useRef<AbortController | null>(null);
+
+  useEffect(() => () => {
+    activeRequest.current?.abort();
+    activeRequest.current = null;
+  }, []);
 
   const findRecommendations = async (
     query: string,
     followUpFields: CourseRequestContext = {},
   ) => {
-    setLastRecommendationRequest({ query, fields: followUpFields });
+    if (activeRequest.current) return;
+    const controller = new AbortController();
+    activeRequest.current = controller;
+    const fields = { ...requestContext, ...followUpFields };
+    const timeout = setTimeout(() => controller.abort(), 120_000);
+    setLastRecommendationRequest({ query, fields });
     setRecommendationRetryAvailable(false);
     setLoading(true);
     setError(null);
@@ -138,29 +152,21 @@ export default function AIRecommendScreen() {
       const apiBaseUrl = await getApiBaseUrl();
       const response = await fetch(`${apiBaseUrl}/api/v1/courses/recommendations`, {
         method: 'POST',
+        signal: controller.signal,
         headers: {
           ...(await buildRequestHeaders()),
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({
           message: query,
-          ...requestContext,
-          ...followUpFields,
+          ...fields,
         }),
       });
 
-      if (!response.ok) {
-        let detail = '';
-        try {
-          const body = await response.json() as { message?: string };
-          detail = body.message ? `: ${body.message}` : '';
-        } catch {
-          // 응답 본문이 JSON이 아니면 상태 코드만 표시합니다.
-        }
-        throw new Error(`AI 추천 요청 실패 (${response.status})${detail}`);
-      }
+      if (!response.ok) throw await recommendationResponseError(response);
 
       const data = await response.json() as CourseRecommendationResponse;
+      if (activeRequest.current !== controller) return;
       setRequestContext(data.request ?? requestContext);
       setMissingFields(data.missing_fields ?? []);
       const finalResponse = data.final_response;
@@ -168,7 +174,7 @@ export default function AIRecommendScreen() {
       if (recommendationReady && finalResponse?.days) {
         setReadyRecommendation({
           title: finalResponse.title ?? '추천 여행 일정',
-          summary: '',
+          summary: finalResponse.summary ?? '',
           days: finalResponse.days,
         });
         setCourseSaved(false);
@@ -187,11 +193,19 @@ export default function AIRecommendScreen() {
         ]);
       }
     } catch (recommendationError) {
+      if (activeRequest.current !== controller) return;
       setRecommendations([]);
-      setRecommendationRetryAvailable(true);
-      setError(recommendationError instanceof Error ? recommendationError.message : '추천 여행지를 불러오지 못했습니다.');
+      setRecommendationRetryAvailable(!(recommendationError instanceof RecommendationError) || recommendationError.retryable);
+      setError(controller.signal.aborted
+        ? '추천 응답을 기다리는 시간이 길어졌어요. 같은 조건으로 다시 시도해 주세요.'
+        : recommendationError instanceof RecommendationError ? recommendationError.message
+          : '서버 응답을 받지 못했습니다. 연결 상태를 확인한 뒤 다시 시도해 주세요.');
     } finally {
-      setLoading(false);
+      clearTimeout(timeout);
+      if (activeRequest.current === controller) {
+        activeRequest.current = null;
+        setLoading(false);
+      }
     }
   };
 
@@ -249,6 +263,9 @@ export default function AIRecommendScreen() {
   };
 
   const startNewRecommendation = () => {
+    activeRequest.current?.abort();
+    activeRequest.current = null;
+    setLoading(false);
     setInput('');
     setError(null);
     setRequestContext({});
@@ -271,7 +288,7 @@ export default function AIRecommendScreen() {
 
   const sendMessage = (text = input) => {
     const trimmed = text.trim();
-    if (!trimmed || loading) return;
+    if (!trimmed || loading || activeRequest.current) return;
 
     const itineraryContext = readyRecommendation
       ? readyRecommendation.days.map((day) => (
@@ -305,9 +322,26 @@ export default function AIRecommendScreen() {
 
   return (
     <SafeAreaView style={styles.safe} edges={['top']}>
+      <View style={[styles.workspace, desktop && styles.desktopWorkspace]}>
+        {desktop && <ScrollView style={styles.sidebar} contentContainerStyle={styles.sidebarContent}>
+          <Text style={styles.sidebarEyebrow}>나만의 강원 여행</Text>
+          <Text style={styles.sidebarTitle}>어떤 여행을{`\n`}떠나고 싶으세요?</Text>
+          <Text style={styles.sidebarDescription}>지역과 기간, 함께하는 사람을 알려주세요. 대화를 나누며 여행 일정을 만들어 보세요.</Text>
+          <View style={styles.contextCard}>
+            <Text style={styles.contextTitle}>지금까지 정한 조건</Text>
+            <Text style={styles.contextValue}>지역 · {requestContext.region || '아직 정하지 않았어요'}</Text>
+            <Text style={styles.contextValue}>기간 · {requestContext.travel_days ? `${requestContext.travel_days}일` : '아직 정하지 않았어요'}</Text>
+            <Text style={styles.contextValue}>반려동물 · {requestContext.pet_allowed == null ? '선택 전' : requestContext.pet_allowed ? '함께 여행' : '동반하지 않음'}</Text>
+          </View>
+          <Text style={styles.sidebarDescription}>완성된 일정을 내 여행에 저장하고, 하루씩 수정할 수 있어요.</Text>
+          <Pressable accessibilityRole="button" style={styles.sidebarReset} onPress={startNewRecommendation} disabled={savingCourse}>
+            <Ionicons name="add-outline" size={18} color={COLORS.primary} />
+            <Text style={styles.newTripText}>새 대화 시작</Text>
+          </Pressable>
+        </ScrollView>}
       <KeyboardAvoidingView
-        style={styles.container}
-        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+        style={[styles.container, desktop && styles.desktopChat]}
+        behavior={Platform.OS === 'web' ? undefined : Platform.OS === 'ios' ? 'padding' : 'height'}
         keyboardVerticalOffset={0}
       >
         <View style={styles.header}>
@@ -317,19 +351,19 @@ export default function AIRecommendScreen() {
           <View style={styles.headerCopy}>
             <Text style={styles.title}>AI 여행 추천</Text>
             <View style={styles.statusRow}>
-              <View style={styles.statusDot} />
-              <Text style={styles.statusText}>지금 바로 추천받기</Text>
+              <View style={[styles.statusDot, error && { backgroundColor: '#D97706' }]} />
+              <Text style={styles.statusText}>{loading ? '추천을 만들고 있어요' : error ? '요청을 완료하지 못했어요' : '원하는 조건으로 일정 만들기'}</Text>
             </View>
           </View>
-          <Pressable style={styles.moreButton} hitSlop={10}>
-            <Ionicons name="ellipsis-horizontal" size={22} color={COLORS.subText} />
+          <Pressable style={styles.moreButton} hitSlop={10} accessibilityRole="button" accessibilityLabel="새 대화 시작" onPress={startNewRecommendation} disabled={savingCourse}>
+            <Ionicons name="refresh-outline" size={22} color={COLORS.subText} />
           </Pressable>
         </View>
 
         <ScrollView
           ref={scrollRef}
           style={styles.chat}
-          contentContainerStyle={styles.chatContent}
+          contentContainerStyle={[styles.chatContent, desktop && styles.desktopChatContent]}
           showsVerticalScrollIndicator={false}
           keyboardShouldPersistTaps="handled"
           keyboardDismissMode={Platform.OS === 'ios' ? 'interactive' : 'on-drag'}
@@ -353,14 +387,14 @@ export default function AIRecommendScreen() {
           {messages.length === 1 && (
             <View style={styles.quickSection}>
               <Text style={styles.quickLabel}>이렇게 물어보세요</Text>
-              <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.quickList}>
+              <View style={styles.quickList}>
                 {QUICK_QUESTIONS.map((question) => (
                   <Pressable key={question} style={styles.quickChip} onPress={() => sendMessage(question)}>
                     <Text style={styles.quickText}>{question}</Text>
                     <Ionicons name="arrow-up" size={14} color={COLORS.primary} />
                   </Pressable>
                 ))}
-              </ScrollView>
+              </View>
             </View>
           )}
 
@@ -372,7 +406,7 @@ export default function AIRecommendScreen() {
           )}
 
           {error && (
-            <View style={styles.errorBox}>
+            <View style={styles.errorBox} accessibilityRole="alert">
               <Ionicons name="alert-circle-outline" size={18} color="#D97706" />
               <View style={styles.errorContent}>
                 <Text style={styles.errorText}>{error}</Text>
@@ -486,12 +520,15 @@ export default function AIRecommendScreen() {
               returnKeyType="send"
               multiline
               maxLength={120}
+              accessibilityLabel="여행 조건 입력"
             />
             <Pressable
               style={[styles.sendButton, !input.trim() && styles.sendButtonDisabled]}
               onPress={() => sendMessage()}
               disabled={!input.trim() || loading}
               hitSlop={6}
+              accessibilityRole="button"
+              accessibilityLabel="추천 요청 보내기"
             >
               <Ionicons name="arrow-up" size={19} color={COLORS.white} />
             </Pressable>
@@ -499,13 +536,27 @@ export default function AIRecommendScreen() {
           <Text style={styles.helperText}>AI 추천은 참고용으로 제공됩니다.</Text>
         </View>}
       </KeyboardAvoidingView>
+      </View>
     </SafeAreaView>
   );
 }
 
 const styles = StyleSheet.create({
   safe: { flex: 1, backgroundColor: COLORS.background },
-  container: { flex: 1 },
+  workspace: { flex: 1, minHeight: 0 },
+  desktopWorkspace: { flexDirection: 'row', padding: 28, gap: 28 },
+  sidebar: { width: 260, flexGrow: 0, flexShrink: 0 },
+  sidebarContent: { paddingTop: 20, gap: 22, paddingBottom: 24 },
+  sidebarEyebrow: { fontSize: 13, fontWeight: '800', color: COLORS.primary },
+  sidebarTitle: { fontSize: 29, lineHeight: 40, fontWeight: '800', color: COLORS.text },
+  sidebarDescription: { fontSize: 14, lineHeight: 23, color: COLORS.subText },
+  contextCard: { backgroundColor: COLORS.white, padding: 20, borderRadius: 16, borderWidth: 1, borderColor: COLORS.border, gap: 14 },
+  contextTitle: { fontSize: 15, fontWeight: '700', color: COLORS.text },
+  contextValue: { fontSize: 13, lineHeight: 21, color: COLORS.subText },
+  sidebarReset: { flexDirection: 'row', alignItems: 'center', gap: 6, paddingVertical: 14 },
+  container: { flex: 1, minHeight: 0, minWidth: 0 },
+  desktopChat: { borderWidth: 1, borderColor: COLORS.border, borderRadius: 20, overflow: 'hidden' },
+  desktopChatContent: { padding: 28 },
   header: {
     flexDirection: 'row', alignItems: 'center', paddingHorizontal: 20, paddingVertical: 15,
     backgroundColor: COLORS.white, borderBottomWidth: 1, borderBottomColor: COLORS.border,
@@ -517,7 +568,7 @@ const styles = StyleSheet.create({
   statusDot: { width: 6, height: 6, borderRadius: 3, backgroundColor: '#24B47E', marginRight: 5 },
   statusText: { fontSize: 12, color: COLORS.subText },
   moreButton: { padding: 4 },
-  chat: { flex: 1 },
+  chat: { flex: 1, minHeight: 0 },
   chatContent: { paddingHorizontal: 20, paddingTop: 22, paddingBottom: 12 },
   messageRow: { flexDirection: 'row', alignItems: 'flex-end', marginBottom: 16 },
   userRow: { justifyContent: 'flex-end' },
@@ -529,7 +580,7 @@ const styles = StyleSheet.create({
   userMessageText: { color: COLORS.white },
   quickSection: { marginTop: 4 },
   quickLabel: { color: COLORS.subText, fontSize: 12, marginLeft: 36, marginBottom: 10 },
-  quickList: { paddingLeft: 36, paddingRight: 10, gap: 8 },
+  quickList: { paddingLeft: 36, paddingRight: 10, gap: 8, flexDirection: 'row', flexWrap: 'wrap' },
   quickChip: { flexDirection: 'row', alignItems: 'center', gap: 7, backgroundColor: COLORS.white, borderWidth: 1, borderColor: COLORS.border, borderRadius: 999, paddingHorizontal: 13, paddingVertical: 10 },
   quickText: { color: COLORS.text, fontSize: 13 },
   resultSection: { marginLeft: 36, marginTop: 2 },

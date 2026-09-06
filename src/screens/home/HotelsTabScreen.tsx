@@ -1,7 +1,9 @@
+import ResponsiveGrid from '../../components/ResponsiveGrid';
+import { openWebMap } from '../../utils/webMap';
+import { Alert } from '../../utils/alert';
 ﻿import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   ActivityIndicator,
-  Alert,
   Image,
   Linking,
   Platform,
@@ -159,6 +161,10 @@ export default function HotelsTabScreen() {
   }, [loadHotels]));
 
   const openNaverDirections = async (hotel: Hotel) => {
+    if (Platform.OS === 'web') {
+      openWebMap(hotel.name, hotel.address);
+      return;
+    }
     if (hotel.latitude === null || hotel.longitude === null) {
       Alert.alert('위치 정보 없음', '이 숙소의 위도와 경도를 확인할 수 없습니다.');
       return;
@@ -262,6 +268,7 @@ export default function HotelsTabScreen() {
             </Text>
           )}
 
+<ResponsiveGrid>
           {hotels.map((hotel) => (
             <View key={hotel.lodgingId} style={styles.card}>
               {hotel.imageUrl ? (
@@ -301,7 +308,7 @@ export default function HotelsTabScreen() {
                     ) : (
                       <>
                         <Ionicons name="navigate-outline" size={16} color="#6B7280" />
-                        <Text style={styles.secondaryButtonText}>길찾기</Text>
+                        <Text style={styles.secondaryButtonText}>{Platform.OS === 'web' ? '웹 지도' : '길찾기'}</Text>
                       </>
                     )}
                   </TouchableOpacity>
@@ -321,6 +328,7 @@ export default function HotelsTabScreen() {
               </View>
             </View>
           ))}
+</ResponsiveGrid>
         </View>
       </ScrollView>
     </SafeAreaView>

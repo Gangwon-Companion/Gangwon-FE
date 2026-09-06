@@ -15,6 +15,8 @@ import { Ionicons } from '@expo/vector-icons';
 import { useNavigation } from '@react-navigation/native';
 import { useBottomTabBarHeight } from '@react-navigation/bottom-tabs';
 import { getApiBaseUrl, requestHeaders } from './api';
+import { useContentWidth, useDesktopLayout } from '../../hooks/useContentWidth';
+import ResponsiveGrid from '../../components/ResponsiveGrid';
 
 type PromotionBanner = {
   id: number;
@@ -68,6 +70,8 @@ const TAB_ITEMS = [
 ] as const;
 
 export default function HomeScreen() {
+  const desktop = useDesktopLayout();
+  const width = useContentWidth();
   const navigation = useNavigation<any>();
   const tabBarHeight = useBottomTabBarHeight();
   const [banners, setBanners] = useState<PromotionBanner[]>([]);
@@ -120,12 +124,12 @@ export default function HomeScreen() {
       <ScrollView
         style={styles.scroll}
         showsVerticalScrollIndicator={false}
-        contentContainerStyle={[styles.scrollContent, { paddingBottom: tabBarHeight + 24 }]}
+        contentContainerStyle={[styles.scrollContent, { paddingBottom: (desktop ? 0 : tabBarHeight) + 24 }]}
       >
-        <View style={styles.header}>
+        <View style={[styles.header, desktop && styles.desktopHeader]}>
           <View style={styles.headerTop}>
             <View style={styles.titleBox}>
-              <Text style={styles.headerTitle}>어디로 떠나볼까요?</Text>
+              <Text style={[styles.headerTitle, desktop && styles.desktopTitle]}>어디로 떠나볼까요?</Text>
               <Text style={styles.headerDescription}>
                 테마 관광지, 숙소, 음식점 정보를 한곳에서 확인해보세요.
               </Text>
@@ -135,12 +139,12 @@ export default function HomeScreen() {
         </View>
 
         <View style={styles.content}>
-          <View style={styles.actionGrid}>
+          <ResponsiveGrid>
             {TAB_ITEMS.map((tab, index) => (
               <TouchableOpacity
                 key={tab.route}
                 onPress={() => navigation.navigate(tab.route)}
-                style={[styles.actionCard, index === 0 && styles.actionCardWide]}
+                style={[styles.actionCard, index === 0 && styles.actionCardWide, desktop && styles.desktopActionCard, !desktop && { marginBottom: 12 }]}
                 activeOpacity={0.86}
               >
                 <View style={styles.actionIcon}>
@@ -153,7 +157,7 @@ export default function HomeScreen() {
                 <Ionicons name="chevron-forward" size={20} color={COLORS.textMuted} />
               </TouchableOpacity>
             ))}
-          </View>
+          </ResponsiveGrid>
 
           {promotionsLoading && <ActivityIndicator color={COLORS.primary} style={styles.bannerLoading} />}
           {!promotionsLoading && banners.length > 0 && (
@@ -165,7 +169,7 @@ export default function HomeScreen() {
                     key={banner.id}
                     activeOpacity={banner.linkUrl ? 0.85 : 1}
                     onPress={() => void openLink(banner.linkUrl)}
-                    style={styles.promoBanner}
+                    style={[styles.promoBanner, { width: desktop ? 370 : Math.min(310, width - 48) }]}
                   >
                     {banner.imageUrl ? <Image source={{ uri: banner.imageUrl }} style={styles.bannerImage} /> : null}
                     <View style={styles.bannerOverlay} />
@@ -180,7 +184,15 @@ export default function HomeScreen() {
               </ScrollView>
             </View>
           )}
-          {!promotionsLoading && promotionsError && <Text style={styles.promotionError}>{promotionsError}</Text>}
+          {!promotionsLoading && promotionsError && (
+            <View style={styles.promotionErrorBox}>
+              <Ionicons name="information-circle-outline" size={18} color="#92400E" />
+              <View style={styles.promotionErrorCopy}>
+                <Text style={styles.promotionErrorTitle}>행사 정보를 불러오지 못했어요</Text>
+                <Text style={styles.promotionError}>잠시 후 다시 확인해 주세요.</Text>
+              </View>
+            </View>
+          )}
         </View>
       </ScrollView>
     </SafeAreaView>
@@ -188,6 +200,9 @@ export default function HomeScreen() {
 }
 
 const styles = StyleSheet.create({
+  desktopHeader: { paddingTop: 60, paddingBottom: 60, paddingHorizontal: 40, marginTop: 28, marginHorizontal: 24, borderRadius: 24 },
+  desktopTitle: { fontSize: 38, lineHeight: 50 },
+  desktopActionCard: { flexDirection: 'column', alignItems: 'flex-start', minHeight: 208, padding: 24 },
   safeArea: {
     flex: 1,
     backgroundColor: COLORS.bg,
@@ -333,7 +348,10 @@ const styles = StyleSheet.create({
     marginBottom: 16,
   },
   bannerLoading: { marginVertical: 32 },
-  promotionError: { color: COLORS.red, fontSize: 13, textAlign: 'center', marginBottom: 24 },
+  promotionErrorBox: { flexDirection: 'row', alignItems: 'center', gap: 10, alignSelf: 'center', width: '100%', maxWidth: 520, padding: 16, marginBottom: 24, borderRadius: 14, backgroundColor: '#FFFBEB', borderWidth: 1, borderColor: '#FDE68A' },
+  promotionErrorCopy: { flex: 1 },
+  promotionErrorTitle: { color: '#78350F', fontSize: 13, fontWeight: '700', marginBottom: 2 },
+  promotionError: { color: '#92400E', fontSize: 12 },
   sectionHeader: {
     flexDirection: 'row',
     justifyContent: 'space-between',

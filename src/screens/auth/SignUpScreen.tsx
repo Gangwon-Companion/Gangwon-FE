@@ -1,8 +1,9 @@
+import { Alert } from '../../utils/alert';
 import { useState } from 'react';
 import { CommonActions } from '@react-navigation/native';
 import {
   ActivityIndicator,
-  Alert,
+  Platform,
   Pressable,
   StyleSheet,
   Text,
@@ -244,7 +245,7 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
     width: '100%',
-    maxWidth: 390,
+    maxWidth: Platform.OS === 'web' ? 560 : 390,
     paddingHorizontal: 24,
     paddingTop: 48,
     backgroundColor: colors.background,

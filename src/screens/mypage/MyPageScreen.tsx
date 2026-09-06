@@ -1,8 +1,8 @@
+import { Alert } from '../../utils/alert';
 import React, { useCallback, useMemo, useState } from 'react';
 import * as ImagePicker from 'expo-image-picker';
 import {
   ActivityIndicator,
-  Alert,
   Image,
   Linking,
   Modal,
@@ -301,8 +301,7 @@ export default function MyPageScreen() {
 
   const selectAlbumProfilePhoto = async () => {
     if (profileSaving) return;
-    const granted = await ensurePhotoLibraryPermission();
-    if (!granted) return;
+    if (Platform.OS !== 'web' && !await ensurePhotoLibraryPermission()) return;
 
     setProfileSaving(true);
     try {
@@ -316,7 +315,7 @@ export default function MyPageScreen() {
       if (!await confirmAction('프로필 사진 변경', '선택한 사진으로 프로필을 변경할까요?', '변경')) return;
 
       const asset = result.assets[0];
-      const uploaded = await uploadProfileImage(asset.uri, `profile-${Date.now()}.jpg`, asset.mimeType ?? 'image/jpeg');
+      const uploaded = await uploadProfileImage(asset.uri, asset.fileName ?? `profile-${Date.now()}.jpg`, asset.mimeType ?? 'image/jpeg');
       await changeProfileImage(uploaded.s3Key);
       setData((previous) => previous ? { ...previous, profileImageUrl: uploaded.url } : previous);
       await load(undefined, true);
@@ -351,11 +350,6 @@ export default function MyPageScreen() {
       { text: '취소', style: 'cancel' as const },
     ];
 
-    if (Platform.OS === 'web') {
-      const useDefaultProfile = globalThis.confirm('기본 프로필을 사용할까요?\n취소를 누르면 앨범에서 사진을 선택합니다.');
-      void (useDefaultProfile ? resetProfilePhoto() : selectAlbumProfilePhoto());
-      return;
-    }
 
     Alert.alert('프로필 사진 변경', '프로필 사진을 선택해주세요.', actions);
   };

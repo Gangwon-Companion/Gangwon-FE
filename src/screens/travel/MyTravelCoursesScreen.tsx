@@ -1,18 +1,20 @@
+import { useContentWidth } from '../../hooks/useContentWidth';
+import { Alert } from '../../utils/alert';
 import React, { useCallback, useState } from 'react';
-import { ActivityIndicator, Alert, Dimensions, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { ActivityIndicator, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { useFocusEffect } from '@react-navigation/native';
 import { buildRequestHeaders, getApiBaseUrl } from '../home/api';
 
 const PRIMARY = '#008A9A';
-const CARD_WIDTH = Dimensions.get('window').width - 72;
 
 type SavedPlace = { id: number; placeType: string; placeId: number; visitOrder: number; day?: number; name?: string | null; visitTime?: string | null; address?: string | null };
 type SavedCourse = { id: number; name: string; places: SavedPlace[] };
 const typeLabel = (type: string) => ({ ATTRACTION: '관광지', DESTINATION: '관광지', RESTAURANT: '음식점', LODGING: '숙소' }[type] ?? type);
 
 export default function MyTravelCoursesScreen() {
+  const cardWidth = Math.min(420, useContentWidth() - 72);
   const [courses, setCourses] = useState<SavedCourse[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -105,13 +107,13 @@ export default function MyTravelCoursesScreen() {
                   return (
                     <View key={key} style={styles.daySection}>
                       <Text style={styles.dayTitle}>{day}일차</Text>
-                      <ScrollView horizontal snapToInterval={CARD_WIDTH + 12} decelerationRate="fast" showsHorizontalScrollIndicator={false} contentContainerStyle={styles.placeList}
+                      <ScrollView horizontal snapToInterval={cardWidth + 12} decelerationRate="fast" showsHorizontalScrollIndicator={false} contentContainerStyle={styles.placeList}
                         onMomentumScrollEnd={(event) => {
-                          const nextIndex = Math.round(event.nativeEvent.contentOffset.x / (CARD_WIDTH + 12));
+                          const nextIndex = Math.round(event.nativeEvent.contentOffset.x / (cardWidth + 12));
                           setActivePlaces((current) => ({ ...current, [key]: nextIndex }));
                         }}>
                         {places.map((place, index) => (
-                          <View key={place.id} style={styles.placeCard}>
+                          <View key={place.id} style={[styles.placeCard, { width: cardWidth }]}>
                             <View style={styles.placeTop}><View style={styles.orderBadge}><Text style={styles.orderText}>{index + 1}</Text></View><Text style={styles.placeType}>{typeLabel(place.placeType)}</Text></View>
                             <Text style={styles.placeName}>{place.name || `${typeLabel(place.placeType)} ${index + 1}`}</Text>
                             {!!place.visitTime && <Text style={styles.visitTime}>{place.visitTime}</Text>}
@@ -136,7 +138,7 @@ const styles = StyleSheet.create({
   safe: { flex: 1, backgroundColor: '#F7F8FA' }, header: { paddingHorizontal: 24, paddingTop: 16, paddingBottom: 20, backgroundColor: '#FFF', borderBottomWidth: 1, borderBottomColor: '#E5E7EB' }, title: { fontSize: 20, fontWeight: '700', color: '#1F2933' },
   center: { flex: 1, justifyContent: 'center', alignItems: 'center', gap: 12, padding: 24 }, emptyTitle: { fontSize: 16, fontWeight: '600', color: '#1F2933' }, emptyDesc: { fontSize: 14, color: '#9CA3AF', textAlign: 'center' }, error: { color: '#B45309', textAlign: 'center' },
   courseList: { paddingVertical: 20 }, courseSection: { marginBottom: 28 }, courseHeader: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 24, marginBottom: 6 }, courseIcon: { width: 42, height: 42, borderRadius: 14, backgroundColor: '#E6F6F4', alignItems: 'center', justifyContent: 'center', marginRight: 11 }, courseHeaderText: { flex: 1 }, courseTitle: { fontSize: 18, fontWeight: '800', color: '#1F2933' }, courseMeta: { marginTop: 3, fontSize: 12, color: PRIMARY, fontWeight: '700' }, deleteButton: { padding: 8 },
-  daySection: { marginTop: 18 }, dayTitle: { paddingHorizontal: 24, marginBottom: 10, fontSize: 15, fontWeight: '800', color: '#006F7C' }, placeList: { paddingHorizontal: 24, gap: 12 }, placeCard: { width: CARD_WIDTH, minHeight: 180, padding: 19, borderRadius: 22, backgroundColor: '#FFF', borderWidth: 1, borderColor: '#E5E7EB' },
+  daySection: { marginTop: 18 }, dayTitle: { paddingHorizontal: 24, marginBottom: 10, fontSize: 15, fontWeight: '800', color: '#006F7C' }, placeList: { paddingHorizontal: 24, gap: 12 }, placeCard: { minHeight: 180, padding: 19, borderRadius: 22, backgroundColor: '#FFF', borderWidth: 1, borderColor: '#E5E7EB' },
   placeTop: { flexDirection: 'row', alignItems: 'center', marginBottom: 18 }, orderBadge: { width: 30, height: 30, borderRadius: 15, backgroundColor: '#E6F6F4', alignItems: 'center', justifyContent: 'center', marginRight: 9 }, orderText: { color: PRIMARY, fontSize: 12, fontWeight: '800' }, placeType: { color: PRIMARY, fontSize: 12, fontWeight: '700' }, placeName: { fontSize: 19, fontWeight: '800', color: '#1F2933' }, visitTime: { marginTop: 9, color: PRIMARY, fontSize: 13, fontWeight: '700' }, address: { marginTop: 7, color: '#6B7280', fontSize: 12, lineHeight: 18 },
   dots: { flexDirection: 'row', justifyContent: 'center', gap: 6, marginTop: 10 }, dot: { width: 6, height: 6, borderRadius: 3, backgroundColor: '#D1D5DB' }, dotActive: { width: 20, backgroundColor: PRIMARY },
 });

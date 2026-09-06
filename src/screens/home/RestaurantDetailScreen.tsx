@@ -1,7 +1,9 @@
+import { useContentWidth, useDesktopLayout } from '../../hooks/useContentWidth';
+import { openWebMap } from '../../utils/webMap';
+import { Alert } from '../../utils/alert';
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   ActivityIndicator,
-  Alert,
   Image,
   Linking,
   NativeScrollEvent,
@@ -12,7 +14,6 @@ import {
   StyleSheet,
   Text,
   TouchableOpacity,
-  useWindowDimensions,
   View,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -99,9 +100,10 @@ async function getErrorMessage(response: Response, fallback: string) {
 }
 
 export default function RestaurantDetailScreen({ navigation, route }: Props) {
-  const { restaurantId, name, imageUrl, menuType, rating, region } = route.params;
-  const { width } = useWindowDimensions();
-  const imageWidth = Math.max(280, width - PAGE_HORIZONTAL_PADDING);
+  const desktop = useDesktopLayout();
+  const { restaurantId, name = '맛집', imageUrl, menuType, rating, region } = route.params;
+  const width = useContentWidth();
+  const imageWidth = Math.max(280, desktop ? width - 64 : width - PAGE_HORIZONTAL_PADDING);
   const [detail, setDetail] = useState<RestaurantDetailResponse | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -213,6 +215,10 @@ export default function RestaurantDetailScreen({ navigation, route }: Props) {
   );
 
   const openDirections = async () => {
+    if (Platform.OS === 'web') {
+      openWebMap(displayName, address);
+      return;
+    }
     if (latitude === null || longitude === null) {
       Alert.alert('좌표 정보 없음', '이 맛집의 위도와 경도를 확인할 수 없습니다.');
       return;
@@ -255,7 +261,7 @@ export default function RestaurantDetailScreen({ navigation, route }: Props) {
   return (
     <SafeAreaView style={styles.safeArea} edges={['top']}>
       <StatusBar barStyle="light-content" backgroundColor={COLORS.primary} />
-      <View style={styles.header}>
+      <View style={[styles.header, desktop && styles.desktopHeader]}>
         <TouchableOpacity onPress={() => navigation.goBack()} style={styles.backButton}>
           <Ionicons name="arrow-back" size={24} color={COLORS.white} />
         </TouchableOpacity>
@@ -268,7 +274,7 @@ export default function RestaurantDetailScreen({ navigation, route }: Props) {
       <ScrollView
         style={styles.scroll}
         showsVerticalScrollIndicator
-        contentContainerStyle={styles.content}
+        contentContainerStyle={[styles.content, desktop && styles.desktopContent]}
       >
         {imageUrls.length > 0 ? (
           <View>
@@ -371,7 +377,7 @@ export default function RestaurantDetailScreen({ navigation, route }: Props) {
           {openingMap ? <ActivityIndicator color={COLORS.white} /> : (
             <>
               <Ionicons name="navigate-outline" size={18} color={COLORS.white} />
-              <Text style={styles.mapButtonText}>길찾기</Text>
+              <Text style={styles.mapButtonText}>{Platform.OS === 'web' ? '웹 지도' : '길찾기'}</Text>
             </>
           )}
         </TouchableOpacity>
@@ -381,6 +387,8 @@ export default function RestaurantDetailScreen({ navigation, route }: Props) {
 }
 
 const styles = StyleSheet.create({
+  desktopHeader: { paddingHorizontal: 32, paddingTop: 20, paddingBottom: 22, borderBottomLeftRadius: 18, borderBottomRightRadius: 18 },
+  desktopContent: { width: '100%', paddingHorizontal: 32, paddingTop: 32, paddingBottom: 56 },
   safeArea: { flex: 1, backgroundColor: COLORS.bg },
   header: {
     backgroundColor: COLORS.primary,

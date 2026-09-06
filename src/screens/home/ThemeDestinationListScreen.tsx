@@ -1,3 +1,4 @@
+import ResponsiveGrid from '../../components/ResponsiveGrid';
 import React, { useCallback, useMemo, useState } from 'react';
 import {
   ActivityIndicator,
@@ -39,7 +40,7 @@ type DestinationListItemWithReview = DestinationListItem & {
 };
 
 export default function ThemeDestinationListScreen({ navigation, route }: Props) {
-  const { themeId, themeName } = route.params;
+  const { themeId, themeName = '테마 여행지' } = route.params;
   const [destinations, setDestinations] = useState<DestinationListItemWithReview[]>([]);
   const [pet, setPet] = useState(false);
   const [accessibility, setAccessibility] = useState(false);
@@ -237,6 +238,7 @@ export default function ThemeDestinationListScreen({ navigation, route }: Props)
           </View>
         )}
 
+<ResponsiveGrid>
         {!loading && !error && pagedDestinations.map((destination) => (
           <TouchableOpacity
             key={destination.id}
@@ -261,6 +263,7 @@ export default function ThemeDestinationListScreen({ navigation, route }: Props)
             </View>
           </TouchableOpacity>
         ))}
+</ResponsiveGrid>
 
         {!loading && !error && destinations.length > 0 && (
           <View style={styles.pagination}>

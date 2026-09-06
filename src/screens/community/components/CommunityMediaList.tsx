@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Dimensions, Image, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import { Image, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 
 import { COMMUNITY_COLORS as COLORS } from '../constants';
@@ -23,6 +23,7 @@ export default function CommunityMediaList({
   onRemoveMedia,
 }: Props) {
   const [activeIndex, setActiveIndex] = useState(0);
+  const [pageWidth, setPageWidth] = useState(1);
 
   if (media.length === 0) {
     if (!showEmpty) return null;
@@ -64,9 +65,8 @@ export default function CommunityMediaList({
   );
 
   if (tileSize === 'post') {
-    const pageWidth = Dimensions.get('window').width - 32;
     return (
-      <View style={styles.carousel}>
+      <View style={styles.carousel} onLayout={(event) => setPageWidth(Math.max(1, event.nativeEvent.layout.width))}>
         <ScrollView
           horizontal
           pagingEnabled
@@ -103,7 +103,7 @@ const styles = StyleSheet.create({
   },
   postTile: {
     width: '100%',
-    height: (Dimensions.get('window').width - 32) * 1.25,
+    aspectRatio: 0.8, maxHeight: 680,
     borderRadius: 0,
   },
   draftTile: {

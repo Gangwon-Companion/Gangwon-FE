@@ -1,7 +1,9 @@
+import ResponsiveGrid from '../../components/ResponsiveGrid';
+import { openWebMap } from '../../utils/webMap';
+import { Alert } from '../../utils/alert';
 ﻿import React, { useCallback, useEffect, useState } from 'react';
 import {
   ActivityIndicator,
-  Alert,
   View,
   Text,
   TextInput,
@@ -163,6 +165,10 @@ export default function RestaurantsTabScreen() {
   }, [loadRestaurants]));
 
   const openNaverDirections = async (restaurant: Restaurant) => {
+    if (Platform.OS === 'web') {
+      openWebMap(restaurant.name, restaurant.address);
+      return;
+    }
     setOpeningRestaurantId(restaurant.restaurantId);
     try {
       let destination = restaurant;
@@ -322,6 +328,7 @@ export default function RestaurantsTabScreen() {
             </Text>
           )}
 
+<ResponsiveGrid>
           {restaurants.map((restaurant) => (
             <View key={restaurant.restaurantId} style={styles.card}>
               {restaurant.imageUrl ? (
@@ -366,7 +373,7 @@ export default function RestaurantsTabScreen() {
                     ) : (
                       <>
                         <Ionicons name="navigate-outline" size={16} color="#6B7280" />
-                        <Text style={styles.secondaryButtonText}>길찾기</Text>
+                        <Text style={styles.secondaryButtonText}>{Platform.OS === 'web' ? '웹 지도' : '길찾기'}</Text>
                       </>
                     )}
                   </TouchableOpacity>
@@ -387,6 +394,7 @@ export default function RestaurantsTabScreen() {
               </View>
             </View>
           ))}
+</ResponsiveGrid>
         </View>
       </ScrollView>
     </SafeAreaView>

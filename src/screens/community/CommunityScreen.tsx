@@ -1,7 +1,8 @@
+import { useDesktopLayout } from '../../hooks/useContentWidth';
+import { Alert } from '../../utils/alert';
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import * as ImagePicker from 'expo-image-picker';
 import {
-  Alert,
   Image,
   KeyboardAvoidingView,
   Linking,
@@ -220,8 +221,10 @@ function detailToPost(
 }
 
 export default function CommunityScreen() {
+  const desktop = useDesktopLayout();
   const route = useRoute<RouteProp<TabParamList, '커뮤니티'>>();
-  const tabBarHeight = useBottomTabBarHeight();
+  const measuredTabBarHeight = useBottomTabBarHeight();
+  const tabBarHeight = desktop ? 0 : measuredTabBarHeight;
   const requestedPostId = route.params?.postId;
   const [mode, setMode] = useState<ScreenMode>('list');
   const [posts, setPosts] = useState<CommunityPost[]>([]);
@@ -547,18 +550,16 @@ export default function CommunityScreen() {
     }));
   };
 
-  const addDraftMedia = (type: MediaType) => {
+  const addDraftMedia = async (type: MediaType) => {
     if (type !== 'image') return;
-    void ensurePhotoLibraryPermission().then((granted) => {
-      if (!granted) return null;
-      return ImagePicker.launchImageLibraryAsync({
+    try {
+      if (Platform.OS !== 'web' && !await ensurePhotoLibraryPermission()) return;
+      const result = await ImagePicker.launchImageLibraryAsync({
         mediaTypes: ['images'],
         allowsMultipleSelection: true,
         selectionLimit: MAX_MEDIA_COUNT,
         quality: 0.85,
       });
-    }).then((result) => {
-      if (!result) return;
       if (result.canceled) return;
       setDraft((current) => ({
         ...current,
@@ -566,9 +567,13 @@ export default function CommunityScreen() {
           id: Date.now() + index,
           type: 'image' as const,
           uri: asset.uri,
+          fileName: asset.fileName ?? undefined,
+          mimeType: asset.mimeType ?? undefined,
         }))].slice(0, MAX_MEDIA_COUNT),
       }));
-    }).catch(() => Alert.alert('사진 선택 실패', '사진을 불러오지 못했습니다. 다시 시도해주세요.'));
+    } catch {
+      Alert.alert('사진 선택 실패', '사진을 불러오지 못했습니다. 다시 시도해주세요.');
+    }
   };
 
   const openCommentMenu = (comment: CommunityComment) => {
@@ -664,7 +669,7 @@ export default function CommunityScreen() {
       if (item.originalUri && !item.uri.startsWith('file:') && !item.uri.startsWith('content:')) {
         return { s3Key: item.originalUri, url: item.uri, sortOrder: index };
       }
-      const uploaded = await uploadCommunityImage(item.uri, `community-${Date.now()}-${index}.jpg`);
+      const uploaded = await uploadCommunityImage(item.uri, item.fileName ?? `community-${Date.now()}-${index}.jpg`, item.mimeType ?? 'image/jpeg');
       return { ...uploaded, sortOrder: index };
     })).then((images) => editingPost
       ? updateCommunityPost(editingPost.id, { ...payload, images })
