@@ -20,6 +20,11 @@ import { getApiBaseUrl, requestHeaders } from '../home/api';
 type Props = NativeStackScreenProps<RootStackParamList, 'SignUp'>;
 const REQUEST_TIMEOUT_MS = 8000;
 type CheckStatus = 'idle' | 'checking' | 'available' | 'taken';
+const PASSWORD_RULE_MESSAGE = '8자 이상, 영문 대문자와 숫자를 포함해주세요';
+
+function isValidPassword(value: string) {
+  return value.length >= 8 && /[A-Z]/.test(value) && /\d/.test(value);
+}
 
 function describeSignUpError(error: unknown) {
   if (error instanceof ApiError && error.errors.length > 0) {
@@ -77,6 +82,10 @@ export default function SignUpScreen({ navigation }: Props) {
     }
     if (usernameStatus !== 'available') {
       Alert.alert('입력 확인', '아이디 중복확인을 먼저 완료해 주세요.');
+      return;
+    }
+    if (!isValidPassword(password)) {
+      Alert.alert('입력 확인', PASSWORD_RULE_MESSAGE);
       return;
     }
 
@@ -191,7 +200,7 @@ export default function SignUpScreen({ navigation }: Props) {
                 )}
               </Pressable>
             </View>
-            <Text style={styles.helpText}>8자 이상, 영문과 숫자를 포함해주세요</Text>
+            <Text style={styles.helpText}>{PASSWORD_RULE_MESSAGE}</Text>
           </View>
 
           <View>

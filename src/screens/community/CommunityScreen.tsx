@@ -1,5 +1,6 @@
 import { useDesktopLayout } from '../../hooks/useContentWidth';
 import { Alert } from '../../utils/alert';
+import { notifyCommunityChanged, subscribeCommunityChanged } from '../../utils/communityEvents';
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import * as ImagePicker from 'expo-image-picker';
 import {
@@ -468,10 +469,17 @@ export default function CommunityScreen() {
     }
   }, [courses, currentUserNickname, currentUserProfileImageUrl, refreshPost, selectedPostId]);
 
+  useEffect(() => subscribeCommunityChanged(() => {
+    void refreshCommunity().catch(() => undefined);
+  }), [refreshCommunity]);
+
   const toggleLike = (postId: number) => {
     const post = posts.find((item) => item.id === postId);
     if (post) void likeCommunityPost(postId, post.liked)
-      .then(() => refreshPost(postId))
+      .then(() => {
+        notifyCommunityChanged();
+        return refreshPost(postId);
+      })
       .catch(() => refreshPost(postId).catch(() => undefined));
     updatePost(postId, (post) => ({
       ...post,
@@ -484,7 +492,10 @@ export default function CommunityScreen() {
     const current = posts.find((item) => item.id === postId);
     if (!current) return;
     void saveCommunityPost(postId, current.saved)
-      .then(() => refreshPost(postId))
+      .then(() => {
+        notifyCommunityChanged();
+        return refreshPost(postId);
+      })
       .catch(() => refreshPost(postId).catch(() => undefined));
     updatePost(postId, (post) => ({
       ...post,
@@ -498,12 +509,16 @@ export default function CommunityScreen() {
       if (!confirmed) return;
       void deleteCommunityPost(postId)
         .then(() => {
+          notifyCommunityChanged();
           setPosts((current) => current.filter((post) => post.id !== postId));
           setSelectedPostId(null);
           setEditingPostId(null);
           setMode('list');
         })
-        .catch(() => Alert.alert('삭제 실패', '로그인 상태와 서버 연결을 확인해주세요.'));
+        .catch((deleteError) => Alert.alert(
+          '삭제 실패',
+          deleteError instanceof Error ? deleteError.message : '로그인 상태와 서버 연결을 확인해주세요.',
+        ));
     });
   };
 
@@ -519,6 +534,7 @@ export default function CommunityScreen() {
 
     void createCommunityComment(selectedPost.id, content)
       .then((comment) => {
+        notifyCommunityChanged();
         updatePost(selectedPost.id, (post) => ({
           ...post,
           commentCount: post.commentCount + 1,
@@ -534,7 +550,10 @@ export default function CommunityScreen() {
     const current = posts.find((item) => item.id === postId)?.comments.find((item) => item.id === commentId);
     if (!current) return;
     void likeCommunityComment(commentId, current.liked)
-      .then(() => refreshPost(postId))
+      .then(() => {
+        notifyCommunityChanged();
+        return refreshPost(postId);
+      })
       .catch(() => refreshPost(postId).catch(() => undefined));
     updatePost(postId, (post) => ({
       ...post,
@@ -586,6 +605,7 @@ export default function CommunityScreen() {
         if (!confirmed || !selectedPost) return;
         void deleteCommunityComment(comment.id)
           .then(() => {
+            notifyCommunityChanged();
             updatePost(selectedPost.id, (post) => ({
               ...post,
               commentCount: Math.max(0, post.commentCount - 1),
@@ -621,6 +641,7 @@ export default function CommunityScreen() {
 
     try {
       const updated = await updateCommunityComment(editingComment.id, content);
+      notifyCommunityChanged();
       updatePost(selectedPost.id, (post) => ({
         ...post,
         comments: post.comments.map((comment) =>
@@ -675,6 +696,7 @@ export default function CommunityScreen() {
       ? updateCommunityPost(editingPost.id, { ...payload, images })
       : createCommunityPost({ ...payload, images }))
       .then((saved) => {
+        notifyCommunityChanged();
         const nextPost = detailToPost(
           saved,
           courses,

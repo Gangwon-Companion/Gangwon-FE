@@ -106,9 +106,9 @@ export async function getMyPage(signal?: AbortSignal): Promise<MyPageData> {
 }
 
 function normalizeCommunityPostPage(data: any): MyCommunityPostPage {
-  const content = Array.isArray(data?.content) ? data.content : [];
+  const content = Array.isArray(data) ? data : Array.isArray(data?.content) ? data.content : [];
   return {
-    ...data,
+    ...(Array.isArray(data) ? {} : data),
     content: content.map((item: any) => ({
       ...item,
       id: item.postId ?? item.id,
@@ -176,7 +176,17 @@ export async function getMySavedCommunityPosts(signal?: AbortSignal): Promise<My
 
 export async function getMyReviews(signal?: AbortSignal): Promise<MyReview[]> {
   const response = await authenticatedFetch('/api/v1/users/me/reviews', { signal });
-  return response.json();
+  const data = await response.json();
+  const items = Array.isArray(data) ? data : Array.isArray(data?.content) ? data.content : [];
+  return items.map((item: any) => ({
+    placeType: item.placeType,
+    placeId: item.placeId,
+    placeName: item.placeName ?? item.name ?? '장소 이름 없음',
+    reviewId: item.reviewId ?? item.id,
+    content: item.content ?? '',
+    rating: Number(item.rating ?? 0),
+    createdAt: item.createdAt ?? '',
+  })).filter((review: MyReview) => !!review.placeType && Number.isFinite(review.placeId) && Number.isFinite(review.reviewId));
 }
 
 export async function getMyLikedComments(signal?: AbortSignal): Promise<MyLikedComment[]> {

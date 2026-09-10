@@ -1,5 +1,6 @@
 import ResponsiveGrid from '../../components/ResponsiveGrid';
-import React, { useCallback, useMemo, useState } from 'react';
+import { subscribePlaceReviewChanged } from '../../utils/placeReviewEvents';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   ActivityIndicator,
   Image,
@@ -16,7 +17,7 @@ import { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { useFocusEffect } from '@react-navigation/native';
 
 import { RootStackParamList } from '../../navigation/types';
-import { ApiResponseError, DestinationListItem, fetchDestinationDetail, fetchThemeDestinations } from './api';
+import { ApiResponseError, DestinationListItem, fetchDestinationDetail, fetchThemeDestinations, getReviewSummary } from './api';
 
 type Props = NativeStackScreenProps<RootStackParamList, 'ThemeDestinations'>;
 
@@ -73,10 +74,11 @@ export default function ThemeDestinationListScreen({ navigation, route }: Props)
               accessibility,
               signal,
             });
+            const reviewSummary = getReviewSummary(detail.reviews, detail.rating ?? destination.rating, detail.reviewCount);
             return {
               ...destination,
-              rating: detail.rating ?? destination.rating ?? null,
-              reviewCount: detail.reviewCount ?? detail.reviews?.length ?? destination.reviewCount ?? 0,
+              rating: reviewSummary.rating,
+              reviewCount: reviewSummary.reviewCount,
             };
           } catch (detailError) {
             const shouldFallback =
@@ -91,10 +93,11 @@ export default function ThemeDestinationListScreen({ navigation, route }: Props)
                   accessibility: false,
                   signal,
                 });
+                const reviewSummary = getReviewSummary(detail.reviews, detail.rating ?? destination.rating, detail.reviewCount);
                 return {
                   ...destination,
-                  rating: detail.rating ?? destination.rating ?? null,
-                  reviewCount: detail.reviewCount ?? detail.reviews?.length ?? destination.reviewCount ?? 0,
+                  rating: reviewSummary.rating,
+                  reviewCount: reviewSummary.reviewCount,
                 };
               } catch {
                 // 상세 데이터가 아직 없으면 목록 데이터만 사용한다.
@@ -127,6 +130,11 @@ export default function ThemeDestinationListScreen({ navigation, route }: Props)
 
     return () => controller.abort();
   }, [loadDestinations]));
+
+  useEffect(() => subscribePlaceReviewChanged((change) => {
+    if (change.resource !== 'destinations') return;
+    void loadDestinations();
+  }), [loadDestinations]);
 
   const openDetail = useCallback((destination: DestinationListItem) => {
     navigation.navigate('DestinationDetail', {

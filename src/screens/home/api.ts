@@ -103,6 +103,30 @@ export type ReviewPayload = {
   rating: number;
 };
 
+export function getReviewSummary(
+  reviews: PlaceReview[] | undefined,
+  fallbackRating: number | null | undefined,
+  fallbackCount: number | null | undefined,
+) {
+  if (Array.isArray(reviews)) {
+    const ratings = reviews
+      .map((review) => Number(review.rating))
+      .filter((rating) => Number.isFinite(rating));
+    const count = reviews.length;
+    return {
+      rating: ratings.length > 0
+        ? ratings.reduce((total, rating) => total + rating, 0) / ratings.length
+        : 0,
+      reviewCount: count,
+    };
+  }
+
+  return {
+    rating: fallbackCount === 0 ? 0 : fallbackRating ?? null,
+    reviewCount: fallbackCount ?? 0,
+  };
+}
+
 let cachedBaseUrl: string | null = null;
 let resolutionPromise: Promise<string> | null = null;
 
