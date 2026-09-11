@@ -21,7 +21,7 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useBottomTabBarHeight } from '@react-navigation/bottom-tabs';
-import { RouteProp, useFocusEffect, useRoute } from '@react-navigation/native';
+import { RouteProp, useFocusEffect, useNavigation, useRoute } from '@react-navigation/native';
 import { Ionicons } from '@expo/vector-icons';
 
 import type { TabParamList } from '../../navigation/TabNavigator';
@@ -224,6 +224,7 @@ function detailToPost(
 export default function CommunityScreen() {
   const desktop = useDesktopLayout();
   const route = useRoute<RouteProp<TabParamList, '커뮤니티'>>();
+  const navigation = useNavigation<any>();
   const measuredTabBarHeight = useBottomTabBarHeight();
   const tabBarHeight = desktop ? 0 : measuredTabBarHeight;
   const requestedPostId = route.params?.postId;
@@ -468,6 +469,37 @@ export default function CommunityScreen() {
       setRefreshing(false);
     }
   }, [courses, currentUserNickname, currentUserProfileImageUrl, refreshPost, selectedPostId]);
+
+  const resetToList = useCallback(() => {
+    setMode('list');
+    setSelectedPostId(null);
+    setEditingPostId(null);
+    setEditingComment(null);
+    setEditingCommentText('');
+    setCommentText('');
+    setSelectedMedia(null);
+  }, []);
+
+  useEffect(() => {
+    const unsubscribe = navigation.addListener('tabPress', () => {
+      navigation.setParams({ postId: undefined });
+      resetToList();
+      void refreshCommunity().catch(() => undefined);
+    });
+
+    return unsubscribe;
+  }, [navigation, refreshCommunity, resetToList]);
+
+  useEffect(() => {
+    const unsubscribe = navigation.addListener('focus', () => {
+      const currentPostId = route.params?.postId;
+      if (typeof currentPostId === 'number') return;
+      resetToList();
+      void refreshCommunity().catch(() => undefined);
+    });
+
+    return unsubscribe;
+  }, [navigation, refreshCommunity, resetToList, route.params?.postId]);
 
   useEffect(() => subscribeCommunityChanged(() => {
     void refreshCommunity().catch(() => undefined);
