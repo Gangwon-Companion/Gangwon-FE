@@ -54,6 +54,14 @@ type CourseRecommendationResponse = {
   } | null;
 };
 
+type CourseRecommendationJobResponse = {
+  jobId: string;
+  status: 'PENDING' | 'RUNNING' | 'COMPLETED' | 'FAILED';
+  result?: CourseRecommendationResponse | null;
+  errorCode?: string | null;
+  message?: string | null;
+};
+
 type RecommendationVisit = {
   time: string;
   place_id: string;
@@ -150,7 +158,7 @@ export default function AIRecommendScreen() {
 
     try {
       const apiBaseUrl = await getApiBaseUrl();
-      const response = await fetch(`${apiBaseUrl}/api/v1/courses/recommendations`, {
+      const response = await fetch(`${apiBaseUrl}/api/v1/courses/recommendations/jobs`, {
         method: 'POST',
         signal: controller.signal,
         headers: {
@@ -165,7 +173,34 @@ export default function AIRecommendScreen() {
 
       if (!response.ok) throw await recommendationResponseError(response);
 
-      const data = await response.json() as CourseRecommendationResponse;
+      const submitted = await response.json() as { jobId: string };
+      let job: CourseRecommendationJobResponse | null = null;
+      const deadline = Date.now() + 120_000;
+      while (Date.now() < deadline) {
+        if (controller.signal.aborted) throw new RecommendationError('추천 요청이 취소되었습니다.', true);
+        const statusResponse = await fetch(
+          `${apiBaseUrl}/api/v1/courses/recommendations/jobs/${encodeURIComponent(submitted.jobId)}`,
+          { signal: controller.signal, headers: await buildRequestHeaders() },
+        );
+        if (!statusResponse.ok) throw await recommendationResponseError(statusResponse);
+        job = await statusResponse.json() as CourseRecommendationJobResponse;
+        if (job.status === 'COMPLETED' || job.status === 'FAILED') break;
+        await new Promise<void>((resolve, reject) => {
+          const timer = setTimeout(resolve, 1500);
+          controller.signal.addEventListener('abort', () => {
+            clearTimeout(timer);
+            reject(new DOMException('Aborted', 'AbortError'));
+          }, { once: true });
+        });
+      }
+      if (!job || job.status === 'PENDING' || job.status === 'RUNNING') {
+        throw new RecommendationError('추천 결과를 기다리는 시간이 초과되었습니다. 잠시 후 다시 시도해주세요.', true);
+      }
+      if (job.status === 'FAILED' || !job.result) {
+        throw new RecommendationError(job.message || '추천 생성에 실패했습니다. 잠시 후 다시 시도해주세요.', true);
+      }
+
+      const data = job.result;
       if (activeRequest.current !== controller) return;
       setRequestContext(data.request ?? requestContext);
       setMissingFields(data.missing_fields ?? []);
