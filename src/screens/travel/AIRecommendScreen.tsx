@@ -45,12 +45,19 @@ type CourseRecommendationResponse = {
   missing_fields?: string[];
   clarification_questions?: string[];
   messages?: string[];
+  search_relaxations?: SearchRelaxation[];
+  search_diagnostics?: unknown;
+  lodging_candidates?: unknown[];
+  missing_slots?: unknown[];
+  retry_actions?: unknown[];
   final_response?: {
     response_status?: string;
     answer?: string;
+    notices?: string[];
     summary?: string;
     title?: string;
     days?: RecommendationDay[];
+    accommodations?: RecommendationVisit[];
   } | null;
 };
 
@@ -63,12 +70,25 @@ type CourseRecommendationJobResponse = {
 };
 
 type RecommendationVisit = {
-  time: string;
-  place_id: string;
+  id?: number | string;
+  placeId?: number | string;
+  lodgingId?: number | string;
+  time?: string;
+  slot?: string;
+  place_id?: string;
   name: string;
   category: 'DESTINATION' | 'RESTAURANT' | 'LODGING' | string;
   address?: string | null;
+  operating_hours?: string | null;
+  accessibility?: Record<string, unknown>;
   recommendation_reason?: string;
+};
+
+type SearchRelaxation = {
+  agent?: string;
+  domain?: string;
+  slot?: string;
+  reason?: string;
 };
 
 type RecommendationDay = {
@@ -81,7 +101,63 @@ type ReadyRecommendation = {
   title: string;
   summary: string;
   days: RecommendationDay[];
+  accommodations: RecommendationVisit[];
+  notices: string[];
+  relaxationReasons: string[];
 };
+
+function uniqueTexts(values: Array<string | null | undefined>) {
+  return [...new Set(values.map((value) => value?.trim()).filter((value): value is string => !!value))];
+}
+
+function extractAccommodations(response: CourseRecommendationResponse['final_response']) {
+  return response?.accommodations ?? [];
+}
+
+function extractRelaxationReasons(data: CourseRecommendationResponse) {
+  return uniqueTexts((data.search_relaxations ?? []).map((item) => item.reason));
+}
+
+function summarizeUserNotices(notices: string[] = [], context: CourseRequestContext = {}) {
+  if (notices.length === 0) return [];
+
+  const messages = ['일부 장소의 운영시간이나 이용 가능 여부는 달라질 수 있어요. 방문 전에 한 번 더 확인해 주세요.'];
+  const hasAccessibilityRequest = context.pet_allowed === true || context.wheelchair_accessible === true
+    || notices.some((notice) => /pet_|반려동물|wheelchair|무장애|휠체어|이동 편의/.test(notice));
+
+  if (hasAccessibilityRequest) {
+    messages.push('식당과 숙소는 반려동물 동반이나 이동 편의 정보를 확인하기 어려울 수 있어요. 예약이나 방문 전에 확인해 주세요.');
+  }
+
+  return messages.slice(0, 2);
+}
+
+function getVisitKey(visit: RecommendationVisit, fallback: string) {
+  return visit.place_id ?? visit.slot ?? `${visit.name}-${fallback}`;
+}
+
+function getAccommodationNightLabel(visit: RecommendationVisit, index: number) {
+  const matched = visit.slot?.match(/D(\d+)_LODGING/i);
+  const night = matched ? Number(matched[1]) : index + 1;
+  return `${night}박차`;
+}
+
+function getAccommodationDay(visit: RecommendationVisit, index: number) {
+  const matched = visit.slot?.match(/D(\d+)_LODGING/i);
+  return matched ? Number(matched[1]) : index + 1;
+}
+
+function shouldShowAccommodationNight(accommodations: RecommendationVisit[]) {
+  return accommodations.length > 1;
+}
+
+function extractPlaceId(visit: RecommendationVisit) {
+  const directId = visit.placeId ?? visit.lodgingId ?? visit.id;
+  const numericDirectId = Number(directId);
+  if (Number.isFinite(numericDirectId) && numericDirectId > 0) return numericDirectId;
+  const matched = visit.place_id?.match(/(\d+)$/);
+  return matched ? Number(matched[1]) : null;
+}
 
 const INITIAL_MESSAGE: Message = {
   id: 1,
@@ -202,15 +278,21 @@ export default function AIRecommendScreen() {
 
       const data = job.result;
       if (activeRequest.current !== controller) return;
-      setRequestContext(data.request ?? requestContext);
+      const nextRequestContext = data.request ?? fields;
+      setRequestContext(nextRequestContext);
       setMissingFields(data.missing_fields ?? []);
       const finalResponse = data.final_response;
+      const relaxationReasons = extractRelaxationReasons(data);
+      const notices = summarizeUserNotices(finalResponse?.notices, nextRequestContext);
       const recommendationReady = finalResponse?.response_status === 'READY' && !!finalResponse.days?.length;
       if (recommendationReady && finalResponse?.days) {
         setReadyRecommendation({
           title: finalResponse.title ?? '추천 여행 일정',
           summary: finalResponse.summary ?? '',
           days: finalResponse.days,
+          accommodations: extractAccommodations(finalResponse),
+          notices,
+          relaxationReasons,
         });
         setCourseSaved(false);
       }
@@ -218,8 +300,8 @@ export default function AIRecommendScreen() {
       setRecommendationTheme(null);
       if (!recommendationReady) {
         const answer = data.final_response?.answer
+          || notices.join('\n')
           || data.clarification_questions?.join('\n')
-          || data.messages?.join('\n')
           || data.final_response?.summary
           || '추천 결과를 만들지 못했습니다. 조건을 조금 더 구체적으로 알려주세요.';
         setMessages((current) => [
@@ -249,16 +331,18 @@ export default function AIRecommendScreen() {
     setSavingCourse(true);
     setError(null);
     try {
-      const places = readyRecommendation.days.flatMap((day) => day.visits.map((visit) => ({ day: day.day, visit }))).map(({ day, visit }) => {
-        const matched = visit.place_id.match(/(\d+)$/);
+      const itineraryPlaces = readyRecommendation.days.flatMap((day) => day.visits.map((visit) => ({ day: day.day, visit })));
+      const lodgingPlaces = readyRecommendation.accommodations.map((visit, index) => ({ day: getAccommodationDay(visit, index), visit }));
+      const places = [...itineraryPlaces, ...lodgingPlaces].map(({ day, visit }) => {
+        const placeId = extractPlaceId(visit);
         const placeType = visit.category === 'DESTINATION' ? 'ATTRACTION' : visit.category;
-        return matched && ['ATTRACTION', 'RESTAURANT', 'LODGING'].includes(placeType)
+        return placeId && ['ATTRACTION', 'RESTAURANT', 'LODGING'].includes(placeType)
           ? {
             placeType,
-            placeId: Number(matched[1]),
+            placeId,
             day,
             name: visit.name,
-            visitTime: visit.time.includes('미확인') ? null : visit.time,
+            visitTime: visit.time?.includes('미확인') ? null : visit.time ?? null,
             address: visit.address ?? null,
           }
           : null;
@@ -466,6 +550,22 @@ export default function AIRecommendScreen() {
             <View style={styles.itineraryCard}>
               <Text style={styles.itineraryTitle}>{readyRecommendation.title}</Text>
               {!!readyRecommendation.summary && <Text style={styles.itinerarySummary}>{readyRecommendation.summary}</Text>}
+              {readyRecommendation.notices.length > 0 && (
+                <View style={styles.noticeBox}>
+                  <Text style={styles.noticeTitle}>방문 전 확인</Text>
+                  {readyRecommendation.notices.map((notice, index) => (
+                    <Text key={`${notice}-${index}`} style={styles.noticeText}>{notice}</Text>
+                  ))}
+                </View>
+              )}
+              {readyRecommendation.relaxationReasons.length > 0 && (
+                <View style={styles.processBox}>
+                  <Text style={styles.processTitle}>검색 조건 조정 안내</Text>
+                  {readyRecommendation.relaxationReasons.map((message, index) => (
+                    <Text key={`${message}-${index}`} style={styles.processText}>· {message}</Text>
+                  ))}
+                </View>
+              )}
               {readyRecommendation.days.map((day) => (
                 <View key={day.day} style={styles.daySection}>
                   <View style={styles.dayHeader}>
@@ -476,10 +576,10 @@ export default function AIRecommendScreen() {
                     </Pressable>
                   </View>
                   {day.visits.map((visit, index) => (
-                    <View key={`${day.day}-${visit.place_id}-${index}`} style={styles.visitRow}>
+                    <View key={`${day.day}-${getVisitKey(visit, String(index))}`} style={styles.visitRow}>
                       <View style={styles.visitDot} />
                       <View style={styles.visitCopy}>
-                        {!visit.time.includes('미확인') && <Text style={styles.visitTime}>{visit.time}</Text>}
+                        {!!visit.time && !visit.time.includes('미확인') && <Text style={styles.visitTime}>{visit.time}</Text>}
                         <Text style={styles.visitName}>{visit.name}</Text>
                         {!!visit.address && <Text style={styles.visitAddress}>{visit.address}</Text>}
                       </View>
@@ -487,6 +587,25 @@ export default function AIRecommendScreen() {
                   ))}
                 </View>
               ))}
+              {readyRecommendation.accommodations.length > 0 && (
+                <View style={styles.lodgingSection}>
+                  <Text style={styles.dayTitle}>추천 숙소</Text>
+                  {readyRecommendation.accommodations.map((lodging, index) => (
+                    <View key={getVisitKey(lodging, String(index))} style={styles.visitRow}>
+                      <View style={styles.visitDot} />
+                      <View style={styles.visitCopy}>
+                        {shouldShowAccommodationNight(readyRecommendation.accommodations) && (
+                          <Text style={styles.visitTime}>{getAccommodationNightLabel(lodging, index)}</Text>
+                        )}
+                        <Text style={styles.visitName}>{lodging.name}</Text>
+                        {!!lodging.address && <Text style={styles.visitAddress}>{lodging.address}</Text>}
+                        {!!lodging.operating_hours && <Text style={styles.visitAddress}>{lodging.operating_hours}</Text>}
+                        {!!lodging.recommendation_reason && <Text style={styles.visitReason}>{lodging.recommendation_reason}</Text>}
+                      </View>
+                    </View>
+                  ))}
+                </View>
+              )}
               {!courseSaved && (
                 <View style={styles.saveBox}>
                   <Text style={styles.saveQuestion}>이 일정을 내 여행에 추가하시겠습니까?</Text>
@@ -639,7 +758,14 @@ const styles = StyleSheet.create({
   itineraryCard: { marginLeft: 36, marginBottom: 18, padding: 16, borderRadius: 18, backgroundColor: COLORS.white, borderWidth: 1, borderColor: COLORS.border },
   itineraryTitle: { color: COLORS.text, fontSize: 18, fontWeight: '800' },
   itinerarySummary: { color: COLORS.subText, fontSize: 13, lineHeight: 19, marginTop: 5, marginBottom: 8 },
+  noticeBox: { marginTop: 10, padding: 12, borderRadius: 12, backgroundColor: '#FFFBEB', gap: 5 },
+  noticeTitle: { color: '#92400E', fontSize: 13, fontWeight: '800' },
+  noticeText: { color: '#92400E', fontSize: 12, lineHeight: 18 },
+  processBox: { marginTop: 10, padding: 12, borderRadius: 12, backgroundColor: COLORS.mint, gap: 5 },
+  processTitle: { color: COLORS.primaryDark, fontSize: 13, fontWeight: '800' },
+  processText: { color: COLORS.subText, fontSize: 12, lineHeight: 18 },
   daySection: { marginTop: 14, paddingTop: 13, borderTopWidth: 1, borderTopColor: '#EEF0F2' },
+  lodgingSection: { marginTop: 14, paddingTop: 13, borderTopWidth: 1, borderTopColor: '#EEF0F2' },
   dayHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 9 },
   dayTitle: { color: COLORS.primaryDark, fontSize: 15, fontWeight: '800' },
   editDayButton: { flexDirection: 'row', alignItems: 'center', gap: 3, paddingHorizontal: 8, paddingVertical: 5, borderRadius: 9, backgroundColor: COLORS.mint },
@@ -650,6 +776,7 @@ const styles = StyleSheet.create({
   visitTime: { color: COLORS.primary, fontSize: 11, fontWeight: '700' },
   visitName: { color: COLORS.text, fontSize: 14, fontWeight: '700', marginTop: 2 },
   visitAddress: { color: COLORS.subText, fontSize: 11, lineHeight: 16, marginTop: 2 },
+  visitReason: { color: COLORS.subText, fontSize: 12, lineHeight: 18, marginTop: 5 },
   saveBox: { marginTop: 8, paddingTop: 15, borderTopWidth: 1, borderTopColor: COLORS.border },
   saveQuestion: { color: COLORS.text, fontSize: 14, fontWeight: '700', textAlign: 'center', marginBottom: 12 },
   saveActions: { flexDirection: 'row', gap: 9 },

@@ -134,7 +134,6 @@ export default function HomeScreen() {
                 테마 관광지, 숙소, 음식점 정보를 한곳에서 확인해보세요.
               </Text>
             </View>
-            <Text style={styles.brandName}>강원동행</Text>
           </View>
         </View>
 
@@ -230,12 +229,6 @@ const styles = StyleSheet.create({
   titleBox: {
     flex: 1,
     minWidth: 0,
-  },
-  brandName: {
-    color: COLORS.white,
-    fontSize: 22,
-    fontWeight: '800',
-    marginLeft: 16,
   },
   greeting: {
     color: 'rgba(255,255,255,0.9)',

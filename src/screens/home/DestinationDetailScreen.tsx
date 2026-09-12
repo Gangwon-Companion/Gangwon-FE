@@ -1,5 +1,6 @@
 import { useContentWidth, useDesktopLayout } from '../../hooks/useContentWidth';
 import { Alert } from '../../utils/alert';
+import { notifyPlaceReviewChanged } from '../../utils/placeReviewEvents';
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   ActivityIndicator,
@@ -26,6 +27,7 @@ import {
   deletePlaceReview,
   DestinationDetail,
   fetchDestinationDetail,
+  getReviewSummary,
   ReviewPayload,
   updatePlaceReview,
 } from './api';
@@ -206,9 +208,10 @@ export default function DestinationDetailScreen({ navigation, route }: Props) {
   }, [detail, firstImage]);
 
   const displayTitle = detail?.title ?? title;
-  const displayRating = detail?.rating ?? null;
+  const reviewSummary = getReviewSummary(detail?.reviews, detail?.rating, detail?.reviewCount);
+  const displayRating = reviewSummary.rating;
   const reviews = detail?.reviews ?? [];
-  const reviewCount = detail?.reviewCount ?? reviews.length;
+  const reviewCount = reviewSummary.reviewCount;
   const address = [detail?.addr1, detail?.addr2].map(normalizeText).filter(Boolean).join(' ');
   const homepageUrl = extractUrl(detail?.homepage);
   const hasBasicInfo = Boolean(
@@ -230,6 +233,7 @@ export default function DestinationDetailScreen({ navigation, route }: Props) {
     setReviewSubmitting(true);
     try {
       await action();
+      notifyPlaceReviewChanged({ resource: 'destinations', resourceId: destinationId });
       await Promise.allSettled([loadDetail(), getMyPage(), getMyReviews()]);
     } catch (reviewError) {
       const message = reviewError instanceof ApiResponseError && reviewError.status === 401

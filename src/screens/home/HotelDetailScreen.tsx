@@ -1,6 +1,7 @@
 import { useContentWidth, useDesktopLayout } from '../../hooks/useContentWidth';
 import { openWebMap } from '../../utils/webMap';
 import { Alert } from '../../utils/alert';
+import { notifyPlaceReviewChanged } from '../../utils/placeReviewEvents';
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   ActivityIndicator,
@@ -27,6 +28,7 @@ import {
   ApiResponseError,
   createPlaceReview,
   deletePlaceReview,
+  getReviewSummary,
   getApiBaseUrl,
   PlaceReview,
   requestHeaders,
@@ -121,13 +123,14 @@ export default function HotelDetailScreen({ navigation, route }: Props) {
     return [...new Set(sourcePhotos.filter((item): item is string => Boolean(item)))];
   }, [detail?.photos, imageUrl]);
   const displayName = detail?.name ?? name;
-  const displayRating = detail?.rating ?? rating;
+  const reviewSummary = getReviewSummary(detail?.reviews, detail?.rating ?? rating, detail?.reviewCount);
+  const displayRating = reviewSummary.rating;
   const displayRegion = detail?.region ?? region ?? null;
   const address = detail?.location?.address ?? displayRegion;
   const latitude = detail?.location?.latitude ?? null;
   const longitude = detail?.location?.longitude ?? null;
   const reviews = detail?.reviews ?? [];
-  const reviewCount = detail?.reviewCount ?? reviews.length;
+  const reviewCount = reviewSummary.reviewCount;
 
   const loadDetail = useCallback(async (signal?: AbortSignal) => {
     setLoading(true);
@@ -191,6 +194,7 @@ export default function HotelDetailScreen({ navigation, route }: Props) {
     setReviewSubmitting(true);
     try {
       await action();
+      notifyPlaceReviewChanged({ resource: 'lodgings', resourceId: lodgingId });
       await Promise.allSettled([loadDetail(), getMyPage(), getMyReviews()]);
     } catch (reviewError) {
       const message = reviewError instanceof ApiResponseError && reviewError.status === 401
