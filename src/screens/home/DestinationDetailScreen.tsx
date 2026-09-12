@@ -1,7 +1,9 @@
+import { useContentWidth, useDesktopLayout } from '../../hooks/useContentWidth';
+import { Alert } from '../../utils/alert';
+import { notifyPlaceReviewChanged } from '../../utils/placeReviewEvents';
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   ActivityIndicator,
-  Alert,
   Image,
   Linking,
   NativeScrollEvent,
@@ -11,7 +13,6 @@ import {
   StyleSheet,
   Text,
   TouchableOpacity,
-  useWindowDimensions,
   View,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -26,6 +27,7 @@ import {
   deletePlaceReview,
   DestinationDetail,
   fetchDestinationDetail,
+  getReviewSummary,
   ReviewPayload,
   updatePlaceReview,
 } from './api';
@@ -97,9 +99,10 @@ function EmptySectionText({ children }: { children: string }) {
 }
 
 export default function DestinationDetailScreen({ navigation, route }: Props) {
-  const { destinationId, title, firstImage, pet, accessibility } = route.params;
-  const { width } = useWindowDimensions();
-  const imageWidth = Math.max(280, width - PAGE_HORIZONTAL_PADDING);
+  const desktop = useDesktopLayout();
+  const { destinationId, title = '여행지', firstImage, pet = false, accessibility = false } = route.params;
+  const width = useContentWidth();
+  const imageWidth = Math.max(280, desktop ? width - 64 : width - PAGE_HORIZONTAL_PADDING);
   const [detail, setDetail] = useState<DestinationDetail | null>(null);
   const [imageIndex, setImageIndex] = useState(0);
   const [fallbackNotice, setFallbackNotice] = useState<string | null>(null);
@@ -205,9 +208,10 @@ export default function DestinationDetailScreen({ navigation, route }: Props) {
   }, [detail, firstImage]);
 
   const displayTitle = detail?.title ?? title;
-  const displayRating = detail?.rating ?? null;
+  const reviewSummary = getReviewSummary(detail?.reviews, detail?.rating, detail?.reviewCount);
+  const displayRating = reviewSummary.rating;
   const reviews = detail?.reviews ?? [];
-  const reviewCount = detail?.reviewCount ?? reviews.length;
+  const reviewCount = reviewSummary.reviewCount;
   const address = [detail?.addr1, detail?.addr2].map(normalizeText).filter(Boolean).join(' ');
   const homepageUrl = extractUrl(detail?.homepage);
   const hasBasicInfo = Boolean(
@@ -229,6 +233,7 @@ export default function DestinationDetailScreen({ navigation, route }: Props) {
     setReviewSubmitting(true);
     try {
       await action();
+      notifyPlaceReviewChanged({ resource: 'destinations', resourceId: destinationId });
       await Promise.allSettled([loadDetail(), getMyPage(), getMyReviews()]);
     } catch (reviewError) {
       const message = reviewError instanceof ApiResponseError && reviewError.status === 401
@@ -258,7 +263,7 @@ export default function DestinationDetailScreen({ navigation, route }: Props) {
     <SafeAreaView style={styles.safeArea} edges={['top']}>
       <StatusBar barStyle="light-content" backgroundColor={COLORS.primary} />
 
-      <View style={styles.header}>
+      <View style={[styles.header, desktop && styles.desktopHeader]}>
         <TouchableOpacity onPress={() => navigation.goBack()} style={styles.backButton}>
           <Ionicons name="arrow-back" size={24} color={COLORS.white} />
         </TouchableOpacity>
@@ -271,7 +276,7 @@ export default function DestinationDetailScreen({ navigation, route }: Props) {
       <ScrollView
         style={styles.scroll}
         showsVerticalScrollIndicator
-        contentContainerStyle={styles.scrollContent}
+        contentContainerStyle={[styles.scrollContent, desktop && styles.desktopContent]}
       >
         {loading && (
           <View style={styles.messageBox}>
@@ -463,6 +468,8 @@ export default function DestinationDetailScreen({ navigation, route }: Props) {
 }
 
 const styles = StyleSheet.create({
+  desktopHeader: { paddingHorizontal: 32, paddingTop: 20, paddingBottom: 22, borderBottomLeftRadius: 18, borderBottomRightRadius: 18 },
+  desktopContent: { width: '100%', paddingHorizontal: 32, paddingTop: 32, paddingBottom: 56 },
   safeArea: {
     flex: 1,
     backgroundColor: COLORS.bg,

@@ -1,7 +1,10 @@
+import { useContentWidth, useDesktopLayout } from '../../hooks/useContentWidth';
+import { openWebMap } from '../../utils/webMap';
+import { Alert } from '../../utils/alert';
+import { notifyPlaceReviewChanged } from '../../utils/placeReviewEvents';
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   ActivityIndicator,
-  Alert,
   Image,
   Linking,
   NativeScrollEvent,
@@ -12,7 +15,6 @@ import {
   StyleSheet,
   Text,
   TouchableOpacity,
-  useWindowDimensions,
   View,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -26,6 +28,7 @@ import {
   ApiResponseError,
   createPlaceReview,
   deletePlaceReview,
+  getReviewSummary,
   getApiBaseUrl,
   PlaceReview,
   requestHeaders,
@@ -102,9 +105,10 @@ async function getErrorMessage(response: Response, fallback: string) {
 }
 
 export default function HotelDetailScreen({ navigation, route }: Props) {
-  const { lodgingId, name, imageUrl, rating, region } = route.params;
-  const { width } = useWindowDimensions();
-  const imageWidth = Math.max(280, width - PAGE_HORIZONTAL_PADDING);
+  const desktop = useDesktopLayout();
+  const { lodgingId, name = '숙소', imageUrl, rating, region } = route.params;
+  const width = useContentWidth();
+  const imageWidth = Math.max(280, desktop ? width - 64 : width - PAGE_HORIZONTAL_PADDING);
   const [detail, setDetail] = useState<LodgingDetailResponse | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -119,13 +123,14 @@ export default function HotelDetailScreen({ navigation, route }: Props) {
     return [...new Set(sourcePhotos.filter((item): item is string => Boolean(item)))];
   }, [detail?.photos, imageUrl]);
   const displayName = detail?.name ?? name;
-  const displayRating = detail?.rating ?? rating;
+  const reviewSummary = getReviewSummary(detail?.reviews, detail?.rating ?? rating, detail?.reviewCount);
+  const displayRating = reviewSummary.rating;
   const displayRegion = detail?.region ?? region ?? null;
   const address = detail?.location?.address ?? displayRegion;
   const latitude = detail?.location?.latitude ?? null;
   const longitude = detail?.location?.longitude ?? null;
   const reviews = detail?.reviews ?? [];
-  const reviewCount = detail?.reviewCount ?? reviews.length;
+  const reviewCount = reviewSummary.reviewCount;
 
   const loadDetail = useCallback(async (signal?: AbortSignal) => {
     setLoading(true);
@@ -189,6 +194,7 @@ export default function HotelDetailScreen({ navigation, route }: Props) {
     setReviewSubmitting(true);
     try {
       await action();
+      notifyPlaceReviewChanged({ resource: 'lodgings', resourceId: lodgingId });
       await Promise.allSettled([loadDetail(), getMyPage(), getMyReviews()]);
     } catch (reviewError) {
       const message = reviewError instanceof ApiResponseError && reviewError.status === 401
@@ -215,6 +221,10 @@ export default function HotelDetailScreen({ navigation, route }: Props) {
   );
 
   const openDirections = async () => {
+    if (Platform.OS === 'web') {
+      openWebMap(displayName, address);
+      return;
+    }
     if (latitude === null || longitude === null) {
       Alert.alert('위치 정보 없음', '이 숙소의 위도와 경도를 확인할 수 없습니다.');
       return;
@@ -257,7 +267,7 @@ export default function HotelDetailScreen({ navigation, route }: Props) {
   return (
     <SafeAreaView style={styles.safeArea} edges={['top']}>
       <StatusBar barStyle="light-content" backgroundColor={COLORS.primary} />
-      <View style={styles.header}>
+      <View style={[styles.header, desktop && styles.desktopHeader]}>
         <TouchableOpacity onPress={() => navigation.goBack()} style={styles.backButton}>
           <Ionicons name="arrow-back" size={24} color={COLORS.white} />
         </TouchableOpacity>
@@ -270,7 +280,7 @@ export default function HotelDetailScreen({ navigation, route }: Props) {
       <ScrollView
         style={styles.scroll}
         showsVerticalScrollIndicator
-        contentContainerStyle={styles.content}
+        contentContainerStyle={[styles.content, desktop && styles.desktopContent]}
       >
         {imageUrls.length > 0 ? (
           <View>
@@ -378,7 +388,7 @@ export default function HotelDetailScreen({ navigation, route }: Props) {
           {openingMap ? <ActivityIndicator color={COLORS.white} /> : (
             <>
               <Ionicons name="navigate-outline" size={18} color={COLORS.white} />
-              <Text style={styles.mapButtonText}>길찾기</Text>
+              <Text style={styles.mapButtonText}>{Platform.OS === 'web' ? '웹 지도' : '길찾기'}</Text>
             </>
           )}
         </TouchableOpacity>
@@ -388,6 +398,8 @@ export default function HotelDetailScreen({ navigation, route }: Props) {
 }
 
 const styles = StyleSheet.create({
+  desktopHeader: { paddingHorizontal: 32, paddingTop: 20, paddingBottom: 22, borderBottomLeftRadius: 18, borderBottomRightRadius: 18 },
+  desktopContent: { width: '100%', paddingHorizontal: 32, paddingTop: 32, paddingBottom: 56 },
   safeArea: { flex: 1, backgroundColor: COLORS.bg },
   header: {
     backgroundColor: COLORS.primary,

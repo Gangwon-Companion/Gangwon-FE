@@ -29,6 +29,8 @@ export type CommunityMedia = {
   type: MediaType;
   uri: string;
   originalUri?: string;
+  fileName?: string;
+  mimeType?: string;
 };
 
 export type CommunityPost = {

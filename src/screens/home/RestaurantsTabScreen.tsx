@@ -1,7 +1,10 @@
+import ResponsiveGrid from '../../components/ResponsiveGrid';
+import { openWebMap } from '../../utils/webMap';
+import { Alert } from '../../utils/alert';
+import { subscribePlaceReviewChanged } from '../../utils/placeReviewEvents';
 ﻿import React, { useCallback, useEffect, useState } from 'react';
 import {
   ActivityIndicator,
-  Alert,
   View,
   Text,
   TextInput,
@@ -19,7 +22,7 @@ import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { Ionicons } from '@expo/vector-icons';
 import * as Location from 'expo-location';
 import type { RootStackParamList } from '../../navigation/types';
-import { buildRequestHeaders, getApiBaseUrl } from './api';
+import { buildRequestHeaders, getApiBaseUrl, getReviewSummary, PlaceReview } from './api';
 
 const THEME_COLOR = '#008A9A';
 const BG_COLOR = '#F7F8FA';
@@ -52,7 +55,7 @@ type RestaurantDetailResponse = {
   latitude: number | null;
   longitude: number | null;
   photos: string[];
-  reviews: unknown[];
+  reviews: PlaceReview[];
   rating: number | null;
   reviewCount?: number;
 };
@@ -114,13 +117,14 @@ export default function RestaurantsTabScreen() {
             );
             if (!detailResponse.ok) throw new Error();
             const detail: RestaurantDetailResponse = await detailResponse.json();
+            const reviewSummary = getReviewSummary(detail.reviews, detail.rating ?? item.rating, detail.reviewCount);
             return {
               ...item,
               address: detail.address,
               latitude: detail.latitude,
               longitude: detail.longitude,
-              rating: detail.rating ?? item.rating,
-              reviewCount: detail.reviewCount ?? detail.reviews.length,
+              rating: reviewSummary.rating,
+              reviewCount: reviewSummary.reviewCount,
               imageUrl: item.thumbnailUrl ?? detail.photos[0] ?? null,
             };
           } catch {
@@ -162,7 +166,16 @@ export default function RestaurantsTabScreen() {
     return () => controller.abort();
   }, [loadRestaurants]));
 
+  useEffect(() => subscribePlaceReviewChanged((change) => {
+    if (change.resource !== 'restaurants') return;
+    void loadRestaurants();
+  }), [loadRestaurants]);
+
   const openNaverDirections = async (restaurant: Restaurant) => {
+    if (Platform.OS === 'web') {
+      openWebMap(restaurant.name, restaurant.address);
+      return;
+    }
     setOpeningRestaurantId(restaurant.restaurantId);
     try {
       let destination = restaurant;
@@ -174,13 +187,14 @@ export default function RestaurantsTabScreen() {
         );
         if (!detailResponse.ok) throw new Error(`음식점 상세 요청 실패 (${detailResponse.status})`);
         const detail: RestaurantDetailResponse = await detailResponse.json();
+        const reviewSummary = getReviewSummary(detail.reviews, detail.rating ?? restaurant.rating, detail.reviewCount);
         destination = {
           ...restaurant,
           address: detail.address,
           latitude: detail.latitude,
           longitude: detail.longitude,
-          rating: detail.rating ?? restaurant.rating,
-          reviewCount: detail.reviewCount ?? detail.reviews.length,
+          rating: reviewSummary.rating,
+          reviewCount: reviewSummary.reviewCount,
           imageUrl: restaurant.thumbnailUrl ?? detail.photos[0] ?? null,
         };
         setRestaurants((current) =>
@@ -322,6 +336,7 @@ export default function RestaurantsTabScreen() {
             </Text>
           )}
 
+<ResponsiveGrid>
           {restaurants.map((restaurant) => (
             <View key={restaurant.restaurantId} style={styles.card}>
               {restaurant.imageUrl ? (
@@ -366,7 +381,7 @@ export default function RestaurantsTabScreen() {
                     ) : (
                       <>
                         <Ionicons name="navigate-outline" size={16} color="#6B7280" />
-                        <Text style={styles.secondaryButtonText}>길찾기</Text>
+                        <Text style={styles.secondaryButtonText}>{Platform.OS === 'web' ? '웹 지도' : '길찾기'}</Text>
                       </>
                     )}
                   </TouchableOpacity>
@@ -387,6 +402,7 @@ export default function RestaurantsTabScreen() {
               </View>
             </View>
           ))}
+</ResponsiveGrid>
         </View>
       </ScrollView>
     </SafeAreaView>

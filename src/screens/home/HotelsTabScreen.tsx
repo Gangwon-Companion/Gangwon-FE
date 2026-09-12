@@ -1,7 +1,10 @@
+import ResponsiveGrid from '../../components/ResponsiveGrid';
+import { openWebMap } from '../../utils/webMap';
+import { Alert } from '../../utils/alert';
+import { subscribePlaceReviewChanged } from '../../utils/placeReviewEvents';
 ﻿import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   ActivityIndicator,
-  Alert,
   Image,
   Linking,
   Platform,
@@ -19,7 +22,7 @@ import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { Ionicons } from '@expo/vector-icons';
 import * as Location from 'expo-location';
 import type { RootStackParamList } from '../../navigation/types';
-import { buildRequestHeaders, getApiBaseUrl } from './api';
+import { buildRequestHeaders, getApiBaseUrl, getReviewSummary, PlaceReview } from './api';
 
 const THEME_COLOR = '#008A9A';
 const BG_COLOR = '#F7F8FA';
@@ -45,7 +48,7 @@ type LodgingListResponse = {
 
 type LodgingDetailResponse = {
   photos: string[];
-  reviews: unknown[];
+  reviews: PlaceReview[];
   rating: number | null;
   reviewCount?: number;
   location: {
@@ -110,13 +113,14 @@ export default function HotelsTabScreen() {
             });
             if (!detailResponse.ok) throw new Error();
             const detail: LodgingDetailResponse = await detailResponse.json();
+            const reviewSummary = getReviewSummary(detail.reviews, detail.rating ?? item.rating, detail.reviewCount);
             return {
               ...item,
               address: detail.location.address,
               latitude: detail.location.latitude,
               longitude: detail.location.longitude,
-              rating: detail.rating ?? item.rating,
-              reviewCount: detail.reviewCount ?? detail.reviews.length,
+              rating: reviewSummary.rating,
+              reviewCount: reviewSummary.reviewCount,
               imageUrl: item.thumbnailUrl ?? detail.photos[0] ?? null,
             };
           } catch {
@@ -158,7 +162,16 @@ export default function HotelsTabScreen() {
     return () => controller.abort();
   }, [loadHotels]));
 
+  useEffect(() => subscribePlaceReviewChanged((change) => {
+    if (change.resource !== 'lodgings') return;
+    void loadHotels();
+  }), [loadHotels]);
+
   const openNaverDirections = async (hotel: Hotel) => {
+    if (Platform.OS === 'web') {
+      openWebMap(hotel.name, hotel.address);
+      return;
+    }
     if (hotel.latitude === null || hotel.longitude === null) {
       Alert.alert('위치 정보 없음', '이 숙소의 위도와 경도를 확인할 수 없습니다.');
       return;
@@ -262,6 +275,7 @@ export default function HotelsTabScreen() {
             </Text>
           )}
 
+<ResponsiveGrid>
           {hotels.map((hotel) => (
             <View key={hotel.lodgingId} style={styles.card}>
               {hotel.imageUrl ? (
@@ -301,7 +315,7 @@ export default function HotelsTabScreen() {
                     ) : (
                       <>
                         <Ionicons name="navigate-outline" size={16} color="#6B7280" />
-                        <Text style={styles.secondaryButtonText}>길찾기</Text>
+                        <Text style={styles.secondaryButtonText}>{Platform.OS === 'web' ? '웹 지도' : '길찾기'}</Text>
                       </>
                     )}
                   </TouchableOpacity>
@@ -321,6 +335,7 @@ export default function HotelsTabScreen() {
               </View>
             </View>
           ))}
+</ResponsiveGrid>
         </View>
       </ScrollView>
     </SafeAreaView>

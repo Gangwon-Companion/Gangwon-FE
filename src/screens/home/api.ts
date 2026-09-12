@@ -103,6 +103,30 @@ export type ReviewPayload = {
   rating: number;
 };
 
+export function getReviewSummary(
+  reviews: PlaceReview[] | undefined,
+  fallbackRating: number | null | undefined,
+  fallbackCount: number | null | undefined,
+) {
+  if (Array.isArray(reviews)) {
+    const ratings = reviews
+      .map((review) => Number(review.rating))
+      .filter((rating) => Number.isFinite(rating));
+    const count = reviews.length;
+    return {
+      rating: ratings.length > 0
+        ? ratings.reduce((total, rating) => total + rating, 0) / ratings.length
+        : 0,
+      reviewCount: count,
+    };
+  }
+
+  return {
+    rating: fallbackCount === 0 ? 0 : fallbackRating ?? null,
+    reviewCount: fallbackCount ?? 0,
+  };
+}
+
 let cachedBaseUrl: string | null = null;
 let resolutionPromise: Promise<string> | null = null;
 
@@ -211,6 +235,22 @@ type ApiBaseUrlOptions = {
 
 export async function getApiBaseUrl(signal?: AbortSignal, options?: ApiBaseUrlOptions) {
   if (cachedBaseUrl) return cachedBaseUrl;
+
+  if (Platform.OS === 'web') {
+    const configuredUrl = process.env.EXPO_PUBLIC_API_URL?.trim();
+    const isLocal = ['localhost', '127.0.0.1', '[::1]'].includes(window.location.hostname);
+    // A deployed site uses /api on its own origin unless an API origin is configured.
+    const baseUrl = configuredUrl
+      ? normalizeBaseUrl(configuredUrl)
+      : isLocal ? 'http://localhost:8080' : window.location.origin;
+    const parsed = new URL(baseUrl);
+    if (!['http:', 'https:'].includes(parsed.protocol)) throw new Error('API 주소는 HTTP 또는 HTTPS 주소여야 합니다.');
+    if (window.location.protocol === 'https:' && parsed.protocol !== 'https:') {
+      throw new Error('HTTPS 웹사이트에는 HTTPS API 주소가 필요합니다.');
+    }
+    cachedBaseUrl = baseUrl;
+    return baseUrl;
+  }
 
   if (options?.skipProbe) {
     const [candidate] = buildCandidates();

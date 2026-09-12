@@ -1,3 +1,4 @@
+import ResponsiveGrid from '../../components/ResponsiveGrid';
 import React, { useCallback, useEffect, useState } from 'react';
 import {
   ActivityIndicator,
@@ -117,6 +118,7 @@ export default function ThemeTabScreen() {
           </View>
         )}
 
+<ResponsiveGrid>
         {!loading && !error && themes.map((theme) => (
           <TouchableOpacity
             key={theme.id}
@@ -133,6 +135,7 @@ export default function ThemeTabScreen() {
             <Ionicons name="chevron-forward" size={20} color={COLORS.textMuted} />
           </TouchableOpacity>
         ))}
+</ResponsiveGrid>
       </ScrollView>
     </SafeAreaView>
   );

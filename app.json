@@ -36,6 +36,9 @@
       "predictiveBackGestureEnabled": false
     },
     "web": {
+      "name": "강원동행",
+      "bundler": "metro",
+      "output": "single",
       "favicon": "./assets/favicon.png"
     },
     "plugins": [

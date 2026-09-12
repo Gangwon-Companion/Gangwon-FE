@@ -1,8 +1,10 @@
+import { Alert } from '../../utils/alert';
+import { notifyCommunityChanged } from '../../utils/communityEvents';
+import { notifyPlaceReviewChanged } from '../../utils/placeReviewEvents';
 import React, { useCallback, useMemo, useState } from 'react';
 import * as ImagePicker from 'expo-image-picker';
 import {
   ActivityIndicator,
-  Alert,
   Image,
   Linking,
   Modal,
@@ -76,6 +78,7 @@ const ACTIVITY_TABS: Array<{ key: ActivityTab; label: string; icon: keyof typeof
   { key: 'likedComments', label: '좋아요 댓글', icon: 'heart-circle-outline' },
   { key: 'reviews', label: '내 리뷰', icon: 'star-outline' },
 ];
+const PASSWORD_RULE_MESSAGE = '8자 이상, 영문 대문자와 숫자를 포함해주세요';
 
 const REVIEW_RESOURCE_MAP: Record<MyReview['placeType'], ReviewResource> = {
   DESTINATION: 'destinations',
@@ -147,6 +150,10 @@ function confirmAction(title: string, message: string, confirmText: string, dest
   });
 }
 
+function isValidPassword(value: string) {
+  return value.length >= 8 && /[A-Z]/.test(value) && /\d/.test(value);
+}
+
 export default function MyPageScreen() {
   const navigation = useNavigation<any>();
   const [data, setData] = useState<MyPageData | null>(null);
@@ -167,6 +174,7 @@ export default function MyPageScreen() {
   const [likedComments, setLikedComments] = useState<MyLikedComment[]>([]);
   const [reviews, setReviews] = useState<MyReview[]>([]);
   const [activityLoading, setActivityLoading] = useState(false);
+  const [activityError, setActivityError] = useState<string | null>(null);
   const [editingReview, setEditingReview] = useState<MyReview | null>(null);
   const [editingComment, setEditingComment] = useState<MyCommunityComment | null>(null);
   const [reviewContent, setReviewContent] = useState('');
@@ -187,6 +195,7 @@ export default function MyPageScreen() {
 
   const loadActivity = useCallback(async (signal?: AbortSignal) => {
     setActivityLoading(true);
+    setActivityError(null);
     try {
       const [postPage, likedPage, savedPage, myCommentItems, likedCommentItems, reviewItems] = await Promise.allSettled([
         getMyCommunityPosts(signal),
@@ -201,6 +210,7 @@ export default function MyPageScreen() {
       const rejected = [postPage, likedPage, savedPage, myCommentItems, likedCommentItems, reviewItems]
         .find((result) => result.status === 'rejected');
       if (rejected?.status === 'rejected' && handleAuthError(rejected.reason)) return;
+      if (rejected?.status === 'rejected') setActivityError(errorMessage(rejected.reason));
 
       setMyPosts(postPage.status === 'fulfilled' ? postPage.value.content ?? [] : []);
       setLikedPosts(likedPage.status === 'fulfilled' ? likedPage.value.content ?? [] : []);
@@ -272,7 +282,8 @@ export default function MyPageScreen() {
     setSaving(true);
     try {
       await changeNickname(value);
-      setData((previous) => previous ? { ...previous, nickname: value } : previous);
+      await load(undefined, true);
+      notifyCommunityChanged();
       setEditor(null);
       Alert.alert('변경 완료', '닉네임이 변경되었습니다.');
     } catch (submitError) {
@@ -285,10 +296,12 @@ export default function MyPageScreen() {
 
   const submitPassword = async () => {
     if (!currentPassword || !newPassword) return Alert.alert('입력 확인', '현재 비밀번호와 새 비밀번호를 입력해 주세요.');
+    if (!isValidPassword(newPassword)) return Alert.alert('입력 확인', PASSWORD_RULE_MESSAGE);
     if (!await confirmAction('비밀번호 변경', '비밀번호를 변경할까요?', '변경')) return;
     setSaving(true);
     try {
       await changePassword(currentPassword, newPassword);
+      await load(undefined, true);
       closeEditor();
       Alert.alert('변경 완료', '비밀번호가 변경되었습니다.');
     } catch (submitError) {
@@ -301,8 +314,7 @@ export default function MyPageScreen() {
 
   const selectAlbumProfilePhoto = async () => {
     if (profileSaving) return;
-    const granted = await ensurePhotoLibraryPermission();
-    if (!granted) return;
+    if (Platform.OS !== 'web' && !await ensurePhotoLibraryPermission()) return;
 
     setProfileSaving(true);
     try {
@@ -316,9 +328,10 @@ export default function MyPageScreen() {
       if (!await confirmAction('프로필 사진 변경', '선택한 사진으로 프로필을 변경할까요?', '변경')) return;
 
       const asset = result.assets[0];
-      const uploaded = await uploadProfileImage(asset.uri, `profile-${Date.now()}.jpg`, asset.mimeType ?? 'image/jpeg');
+      const uploaded = await uploadProfileImage(asset.uri, asset.fileName ?? `profile-${Date.now()}.jpg`, asset.mimeType ?? 'image/jpeg');
       await changeProfileImage(uploaded.s3Key);
       setData((previous) => previous ? { ...previous, profileImageUrl: uploaded.url } : previous);
+      notifyCommunityChanged();
       await load(undefined, true);
     } catch (profileError) {
       if (handleAuthError(profileError)) return;
@@ -335,6 +348,7 @@ export default function MyPageScreen() {
     try {
       await changeProfileImage(null);
       setData((previous) => previous ? { ...previous, profileImageUrl: null } : previous);
+      notifyCommunityChanged();
       await load(undefined, true);
     } catch (profileError) {
       if (handleAuthError(profileError)) return;
@@ -351,11 +365,6 @@ export default function MyPageScreen() {
       { text: '취소', style: 'cancel' as const },
     ];
 
-    if (Platform.OS === 'web') {
-      const useDefaultProfile = globalThis.confirm('기본 프로필을 사용할까요?\n취소를 누르면 앨범에서 사진을 선택합니다.');
-      void (useDefaultProfile ? resetProfilePhoto() : selectAlbumProfilePhoto());
-      return;
-    }
 
     Alert.alert('프로필 사진 변경', '프로필 사진을 선택해주세요.', actions);
   };
@@ -410,7 +419,8 @@ export default function MyPageScreen() {
     if (!await confirmAction('좋아요 취소', '이 게시글의 좋아요를 취소할까요?', '취소')) return;
     try {
       await likeCommunityPost(postId, true);
-      setLikedPosts((current) => current.filter((post) => post.id !== postId));
+      notifyCommunityChanged();
+      await load(undefined, true);
     } catch (likeError) {
       Alert.alert('좋아요 취소 실패', errorMessage(likeError));
     }
@@ -420,7 +430,8 @@ export default function MyPageScreen() {
     if (!await confirmAction('저장 취소', '이 게시글 저장을 취소할까요?', '취소')) return;
     try {
       await saveCommunityPost(postId, true);
-      setSavedPosts((current) => current.filter((post) => post.id !== postId));
+      notifyCommunityChanged();
+      await load(undefined, true);
     } catch (saveError) {
       Alert.alert('저장 취소 실패', errorMessage(saveError));
     }
@@ -430,13 +441,15 @@ export default function MyPageScreen() {
     if (!await confirmAction('댓글 좋아요 취소', '이 댓글의 좋아요를 취소할까요?', '취소')) return;
     try {
       await likeCommunityComment(commentId, true);
-      setLikedComments((current) => current.filter((comment) => comment.commentId !== commentId));
+      notifyCommunityChanged();
+      await load(undefined, true);
     } catch (likeError) {
       Alert.alert('댓글 좋아요 취소 실패', errorMessage(likeError));
     }
   };
 
   const openCommunityPost = (postId: number) => {
+    void loadActivity();
     navigation.navigate('커뮤니티', { postId });
   };
 
@@ -444,9 +457,8 @@ export default function MyPageScreen() {
     if (!await confirmAction('게시글 삭제', '게시글을 삭제할까요?', '삭제', true)) return;
     try {
       await deleteCommunityPost(postId);
-      setMyPosts((current) => current.filter((post) => post.id !== postId));
-      setLikedPosts((current) => current.filter((post) => post.id !== postId));
-      setSavedPosts((current) => current.filter((post) => post.id !== postId));
+      notifyCommunityChanged();
+      await load(undefined, true);
     } catch (deleteError) {
       Alert.alert('게시글 삭제 실패', errorMessage(deleteError));
     }
@@ -466,6 +478,7 @@ export default function MyPageScreen() {
   };
 
   const openReviewPlace = (review: MyReview) => {
+    void loadActivity();
     if (review.placeType === 'DESTINATION') {
       navigation.navigate('DestinationDetail', {
         destinationId: review.placeId,
@@ -502,6 +515,7 @@ export default function MyPageScreen() {
     setSaving(true);
     try {
       await updatePlaceReview(REVIEW_RESOURCE_MAP[editingReview.placeType], editingReview.placeId, editingReview.reviewId, { content, rating });
+      notifyPlaceReviewChanged({ resource: REVIEW_RESOURCE_MAP[editingReview.placeType], resourceId: editingReview.placeId });
       await load(undefined, true);
       closeEditor();
     } catch (reviewError) {
@@ -515,6 +529,7 @@ export default function MyPageScreen() {
     if (!await confirmAction('리뷰 삭제', '리뷰를 삭제할까요?', '삭제', true)) return;
     try {
       await deletePlaceReview(REVIEW_RESOURCE_MAP[review.placeType], review.placeId, review.reviewId);
+      notifyPlaceReviewChanged({ resource: REVIEW_RESOURCE_MAP[review.placeType], resourceId: review.placeId });
       await load(undefined, true);
     } catch (reviewError) {
       Alert.alert('리뷰 삭제 실패', errorMessage(reviewError));
@@ -530,6 +545,7 @@ export default function MyPageScreen() {
     setSaving(true);
     try {
       await updateCommunityComment(editingComment.commentId, content);
+      notifyCommunityChanged();
       await load(undefined, true);
       closeEditor();
     } catch (commentError) {
@@ -543,9 +559,8 @@ export default function MyPageScreen() {
     if (!await confirmAction('댓글 삭제', '댓글을 삭제할까요?', '삭제', true)) return;
     try {
       await deleteCommunityComment(comment.commentId);
-      setMyComments((current) => current.filter((item) => item.commentId !== comment.commentId));
-      setLikedComments((current) => current.filter((item) => item.commentId !== comment.commentId));
-      void load(undefined, true);
+      notifyCommunityChanged();
+      await load(undefined, true);
     } catch (commentError) {
       Alert.alert('댓글 삭제 실패', errorMessage(commentError));
     }
@@ -610,6 +625,7 @@ export default function MyPageScreen() {
           </ScrollView>
 
           <View style={styles.activityCard}>
+            {!!activityError && <Text style={styles.activityErrorText}>일부 활동 내역을 불러오지 못했습니다. {activityError}</Text>}
             {activityLoading ? <ActivityIndicator color={COLORS.primary} /> : activityTab === 'reviews' ? (
               reviews.length > 0 ? reviews.map((review) => (
                 <ReviewItem
@@ -679,6 +695,7 @@ export default function MyPageScreen() {
               <>
                 <TextInput style={styles.input} value={currentPassword} onChangeText={setCurrentPassword} secureTextEntry placeholder="현재 비밀번호" />
                 <TextInput style={styles.input} value={newPassword} onChangeText={setNewPassword} secureTextEntry placeholder="새 비밀번호" />
+                <Text style={styles.helpText}>{PASSWORD_RULE_MESSAGE}</Text>
               </>
             )}
             <View style={styles.modalActions}>
@@ -843,6 +860,7 @@ const styles = StyleSheet.create({
   smallDangerButton: { minHeight: 32, borderRadius: 9, backgroundColor: COLORS.redBg, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 10 },
   smallDangerText: { color: COLORS.red, fontSize: 12, fontWeight: '800' },
   emptyText: { color: COLORS.textMuted, fontSize: 14, textAlign: 'center', paddingVertical: 16 },
+  activityErrorText: { color: '#B45309', fontSize: 12, lineHeight: 18, paddingBottom: 8 },
   menuRow: { flexDirection: 'row', alignItems: 'center', backgroundColor: COLORS.white, borderRadius: 16, padding: 14, gap: 14 },
   menuIcon: { width: 42, height: 42, borderRadius: 12, backgroundColor: COLORS.primaryBg, alignItems: 'center', justifyContent: 'center' },
   dangerBg: { backgroundColor: COLORS.redBg },
@@ -853,6 +871,7 @@ const styles = StyleSheet.create({
   modal: { backgroundColor: COLORS.white, borderRadius: 20, padding: 20, gap: 14 },
   modalTitle: { fontSize: 19, fontWeight: '700', color: COLORS.text },
   input: { height: 50, borderWidth: 1, borderColor: COLORS.border, borderRadius: 12, paddingHorizontal: 14, color: COLORS.text },
+  helpText: { marginTop: -8, color: COLORS.textMuted, fontSize: 12 },
   reviewInput: { minHeight: 96, paddingTop: 12, textAlignVertical: 'top' },
   modalActions: { flexDirection: 'row', gap: 10, marginTop: 4 },
   cancelButton: { flex: 1, height: 48, borderRadius: 12, backgroundColor: COLORS.bg, alignItems: 'center', justifyContent: 'center' },

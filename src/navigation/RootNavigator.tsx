@@ -15,6 +15,7 @@ import HotelDetailScreen from '../screens/home/HotelDetailScreen';
 import RestaurantDetailScreen from '../screens/home/RestaurantDetailScreen';
 import HotelNavigationScreen from '../screens/travel/HotelNavigationScreen';
 import { RootStackParamList } from './types';
+import NotFoundScreen from '../screens/NotFoundScreen';
 
 const Stack = createNativeStackNavigator<RootStackParamList>();
 
@@ -37,6 +38,7 @@ export default function RootNavigator() {
       <Stack.Screen name="RestaurantsTab" component={RestaurantsTabScreen} />
       <Stack.Screen name="RestaurantDetail" component={RestaurantDetailScreen} />
       <Stack.Screen name="HotelNavigation" component={HotelNavigationScreen} />
+      <Stack.Screen name="NotFound" component={NotFoundScreen} />
     </Stack.Navigator>
   );
 }

@@ -1,4 +1,6 @@
-import React, { useCallback, useMemo, useState } from 'react';
+import ResponsiveGrid from '../../components/ResponsiveGrid';
+import { subscribePlaceReviewChanged } from '../../utils/placeReviewEvents';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   ActivityIndicator,
   Image,
@@ -15,7 +17,7 @@ import { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { useFocusEffect } from '@react-navigation/native';
 
 import { RootStackParamList } from '../../navigation/types';
-import { ApiResponseError, DestinationListItem, fetchDestinationDetail, fetchThemeDestinations } from './api';
+import { ApiResponseError, DestinationListItem, fetchDestinationDetail, fetchThemeDestinations, getReviewSummary } from './api';
 
 type Props = NativeStackScreenProps<RootStackParamList, 'ThemeDestinations'>;
 
@@ -39,7 +41,7 @@ type DestinationListItemWithReview = DestinationListItem & {
 };
 
 export default function ThemeDestinationListScreen({ navigation, route }: Props) {
-  const { themeId, themeName } = route.params;
+  const { themeId, themeName = '테마 여행지' } = route.params;
   const [destinations, setDestinations] = useState<DestinationListItemWithReview[]>([]);
   const [pet, setPet] = useState(false);
   const [accessibility, setAccessibility] = useState(false);
@@ -72,10 +74,11 @@ export default function ThemeDestinationListScreen({ navigation, route }: Props)
               accessibility,
               signal,
             });
+            const reviewSummary = getReviewSummary(detail.reviews, detail.rating ?? destination.rating, detail.reviewCount);
             return {
               ...destination,
-              rating: detail.rating ?? destination.rating ?? null,
-              reviewCount: detail.reviewCount ?? detail.reviews?.length ?? destination.reviewCount ?? 0,
+              rating: reviewSummary.rating,
+              reviewCount: reviewSummary.reviewCount,
             };
           } catch (detailError) {
             const shouldFallback =
@@ -90,10 +93,11 @@ export default function ThemeDestinationListScreen({ navigation, route }: Props)
                   accessibility: false,
                   signal,
                 });
+                const reviewSummary = getReviewSummary(detail.reviews, detail.rating ?? destination.rating, detail.reviewCount);
                 return {
                   ...destination,
-                  rating: detail.rating ?? destination.rating ?? null,
-                  reviewCount: detail.reviewCount ?? detail.reviews?.length ?? destination.reviewCount ?? 0,
+                  rating: reviewSummary.rating,
+                  reviewCount: reviewSummary.reviewCount,
                 };
               } catch {
                 // 상세 데이터가 아직 없으면 목록 데이터만 사용한다.
@@ -126,6 +130,11 @@ export default function ThemeDestinationListScreen({ navigation, route }: Props)
 
     return () => controller.abort();
   }, [loadDestinations]));
+
+  useEffect(() => subscribePlaceReviewChanged((change) => {
+    if (change.resource !== 'destinations') return;
+    void loadDestinations();
+  }), [loadDestinations]);
 
   const openDetail = useCallback((destination: DestinationListItem) => {
     navigation.navigate('DestinationDetail', {
@@ -237,6 +246,7 @@ export default function ThemeDestinationListScreen({ navigation, route }: Props)
           </View>
         )}
 
+<ResponsiveGrid>
         {!loading && !error && pagedDestinations.map((destination) => (
           <TouchableOpacity
             key={destination.id}
@@ -261,6 +271,7 @@ export default function ThemeDestinationListScreen({ navigation, route }: Props)
             </View>
           </TouchableOpacity>
         ))}
+</ResponsiveGrid>
 
         {!loading && !error && destinations.length > 0 && (
           <View style={styles.pagination}>

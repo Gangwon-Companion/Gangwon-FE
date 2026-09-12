@@ -1,7 +1,7 @@
+import { Alert } from '../../../utils/alert';
 import React, { useEffect, useState } from 'react';
 import {
   ActivityIndicator,
-  Alert,
   Image,
   Platform,
   StyleSheet,
