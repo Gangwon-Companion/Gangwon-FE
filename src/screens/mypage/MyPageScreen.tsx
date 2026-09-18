@@ -22,6 +22,7 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { CommonActions, useFocusEffect, useNavigation } from '@react-navigation/native';
+import TravelProfileCard from './TravelProfileCard';
 
 import { ApiError, clearAccessToken } from '../../api/auth';
 import { deletePlaceReview, updatePlaceReview, type ReviewResource } from '../home/api';
@@ -613,6 +614,9 @@ export default function MyPageScreen() {
               </View>
             ))}
           </View>
+
+          <Text style={styles.sectionTitle}>나의 여행 취향</Text>
+          <TravelProfileCard />
 
           <Text style={styles.sectionTitle}>내 커뮤니티</Text>
           <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.tabRow}>

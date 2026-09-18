@@ -42,6 +42,8 @@ location / {
 
 ## 백엔드 연결
 
+여행 취향 프로필의 마이페이지 UI, 분석 Job Polling과 상태별 동작은 [docs/AI_TRAVEL_PROFILE.md](docs/AI_TRAVEL_PROFILE.md)에 정리되어 있습니다.
+
 기존 API와 DB 구조를 바꾸는 작업은 포함하지 않습니다. 별도 origin의 API를 사용하는 경우 서버에서 다음을 허용해야 합니다.
 
 - 웹 주소: 개발 서버 주소, `http://localhost:4173`, 실제 배포 도메인.

@@ -69,6 +69,25 @@ export type MyLikedComment = {
   createdAt: string;
 };
 
+export type TravelProfile = {
+  status: 'NOT_ANALYZED' | 'COMPLETED' | 'INSUFFICIENT_DATA';
+  travelerType: string | null;
+  title: string | null;
+  description: string | null;
+  tags: string[];
+  evidences: string[];
+  confidence: number | null;
+  analyzedAt: string | null;
+};
+
+export type TravelProfileJob = {
+  jobId: string;
+  status: 'PENDING' | 'RUNNING' | 'COMPLETED' | 'FAILED';
+  profile?: TravelProfile | null;
+  errorCode?: string | null;
+  message?: string | null;
+};
+
 export type MyCommunityComment = {
   commentId: number;
   postId: number;
@@ -103,6 +122,23 @@ export async function getMyPage(signal?: AbortSignal): Promise<MyPageData> {
   const response = await authenticatedFetch('/api/v1/users/me', { signal });
   const data = await response.json();
   return { ...data, joinedAt: data.joinedAt ?? data.createdAt ?? '' };
+}
+
+export async function getTravelProfile(signal?: AbortSignal): Promise<TravelProfile> {
+  const response = await authenticatedFetch('/api/v1/users/me/travel-profile', { signal });
+  return response.json();
+}
+
+export async function startTravelProfileAnalysis(): Promise<Pick<TravelProfileJob, 'jobId' | 'status'>> {
+  const response = await authenticatedFetch('/api/v1/users/me/travel-profile/analysis-jobs', {
+    method: 'POST',
+  });
+  return response.json();
+}
+
+export async function getTravelProfileAnalysisJob(jobId: string, signal?: AbortSignal): Promise<TravelProfileJob> {
+  const response = await authenticatedFetch(`/api/v1/users/me/travel-profile/analysis-jobs/${jobId}`, { signal });
+  return response.json();
 }
 
 function normalizeCommunityPostPage(data: any): MyCommunityPostPage {
