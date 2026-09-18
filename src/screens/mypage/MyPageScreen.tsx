@@ -22,6 +22,7 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { CommonActions, useFocusEffect, useNavigation } from '@react-navigation/native';
+import TravelProfileSummaryCard from '../travelprofile/TravelProfileSummaryCard';
 
 import { ApiError, clearAccessToken } from '../../api/auth';
 import { deletePlaceReview, updatePlaceReview, type ReviewResource } from '../home/api';
@@ -599,6 +600,7 @@ export default function MyPageScreen() {
         </View>
 
         <View style={styles.content}>
+          <TravelProfileSummaryCard />
           {error && !loading && <TouchableOpacity style={styles.retry} onPress={() => void load()}><Text style={styles.retryText}>다시 시도</Text></TouchableOpacity>}
           <Text style={styles.sectionTitle}>여행 활동</Text>
           <View style={styles.statsCard}>
