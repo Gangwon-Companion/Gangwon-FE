@@ -47,4 +47,5 @@ export type RootStackParamList = {
     name: string;
     location: string;
   };
+  TravelProfile: undefined;
 };
