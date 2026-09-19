@@ -30,6 +30,7 @@ export const linking: LinkingOptions<RootStackParamList> = {
       RestaurantsTab: 'restaurants',
       RestaurantDetail: { path: 'restaurants/:restaurantId', parse: { restaurantId: Number, rating: Number } },
       HotelNavigation: 'hotel-navigation',
+      TravelProfile: 'travel-profile',
       NotFound: '*',
     },
   },

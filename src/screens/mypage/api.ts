@@ -98,22 +98,27 @@ export type MyCommunityComment = {
   createdAt: string;
 };
 
-async function authenticatedFetch(path: string, init: RequestInit = {}) {
+type AuthenticatedFetchOptions = RequestInit & {
+  clearTokenOnUnauthorized?: boolean;
+};
+
+async function authenticatedFetch(path: string, init: AuthenticatedFetchOptions = {}) {
+  const { clearTokenOnUnauthorized = true, ...fetchInit } = init;
   const token = await getAccessToken();
   if (!token) throw new ApiError('로그인이 필요합니다.', 401, 'UNAUTHORIZED');
 
-  const baseUrl = await getApiBaseUrl(init.signal ?? undefined);
+  const baseUrl = await getApiBaseUrl(fetchInit.signal ?? undefined);
   const response = await fetch(`${baseUrl}${path}`, {
-    ...init,
+    ...fetchInit,
     headers: {
       ...requestHeaders,
       'Content-Type': 'application/json',
-      ...init.headers,
+      ...fetchInit.headers,
       Authorization: `Bearer ${token}`,
     },
   });
 
-  if (response.status === 401) await clearAccessToken();
+  if (response.status === 401 && clearTokenOnUnauthorized) await clearAccessToken();
   if (!response.ok) throw await parseApiError(response);
   return response;
 }
@@ -172,6 +177,7 @@ export async function changeNickname(nickname: string) {
 export async function changePassword(currentPassword: string, newPassword: string) {
   await authenticatedFetch('/api/v1/users/me/password', {
     method: 'PATCH',
+    clearTokenOnUnauthorized: false,
     body: JSON.stringify({ currentPassword, newPassword }),
   });
 }

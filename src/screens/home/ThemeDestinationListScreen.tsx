@@ -40,6 +40,24 @@ type DestinationListItemWithReview = DestinationListItem & {
   reviewCount: number;
 };
 
+function preserveDestinationOrder(
+  previous: DestinationListItemWithReview[],
+  next: DestinationListItemWithReview[],
+) {
+  if (previous.length === 0) return next;
+  const nextById = new Map(next.map((destination) => [destination.id, destination]));
+  const usedIds = new Set<number>();
+  const ordered = previous
+    .map((destination) => nextById.get(destination.id))
+    .filter((destination): destination is DestinationListItemWithReview => {
+      if (!destination || usedIds.has(destination.id)) return false;
+      usedIds.add(destination.id);
+      return true;
+    });
+  const newlyAdded = next.filter((destination) => !usedIds.has(destination.id));
+  return [...ordered, ...newlyAdded];
+}
+
 export default function ThemeDestinationListScreen({ navigation, route }: Props) {
   const { themeId, themeName = '테마 여행지' } = route.params;
   const [destinations, setDestinations] = useState<DestinationListItemWithReview[]>([]);
@@ -55,7 +73,10 @@ export default function ThemeDestinationListScreen({ navigation, route }: Props)
     return destinations.slice(start, start + PAGE_SIZE);
   }, [destinations, page]);
 
-  const loadDestinations = useCallback(async (signal?: AbortSignal) => {
+  const loadDestinations = useCallback(async (
+    signal?: AbortSignal,
+    options?: { preserveOrder?: boolean },
+  ) => {
     setLoading(true);
     setError(null);
 
@@ -114,8 +135,12 @@ export default function ThemeDestinationListScreen({ navigation, route }: Props)
       );
 
       if (signal?.aborted) return;
-      setDestinations(hydratedDestinations);
-      setPage(1);
+      setDestinations((previous) => (
+        options?.preserveOrder
+          ? preserveDestinationOrder(previous, hydratedDestinations)
+          : hydratedDestinations
+      ));
+      if (!options?.preserveOrder) setPage(1);
     } catch (loadError) {
       if (signal?.aborted) return;
       setError(loadError instanceof Error ? loadError.message : '장소 목록을 불러오지 못했습니다.');
@@ -133,7 +158,7 @@ export default function ThemeDestinationListScreen({ navigation, route }: Props)
 
   useEffect(() => subscribePlaceReviewChanged((change) => {
     if (change.resource !== 'destinations') return;
-    void loadDestinations();
+    void loadDestinations(undefined, { preserveOrder: true });
   }), [loadDestinations]);
 
   const openDetail = useCallback((destination: DestinationListItem) => {

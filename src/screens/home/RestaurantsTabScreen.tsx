@@ -77,11 +77,49 @@ const formatLocationText = (restaurant: Restaurant) => {
   return restaurant.address ?? restaurant.region ?? '주소 정보 없음';
 };
 
+function getInitialSearchQuery() {
+  if (Platform.OS !== 'web' || typeof window === 'undefined') return '';
+  return new URLSearchParams(window.location.search).get('q') ?? '';
+}
+
+function getInitialFilterIndex() {
+  if (Platform.OS !== 'web' || typeof window === 'undefined') return 0;
+  const params = new URLSearchParams(window.location.search);
+  const filter = params.get('filter');
+  const menuType = params.get('menuType');
+  const filterIndex = filter ? filters.findIndex((item) => item === filter) : -1;
+  if (filterIndex >= 0) return filterIndex;
+  const menuTypeIndex = menuType ? filterMenuTypes.findIndex((item) => item === menuType) : -1;
+  return menuTypeIndex >= 0 ? menuTypeIndex : 0;
+}
+
+function replaceWebSearchState(keyword: string, selectedFilter: number) {
+  if (Platform.OS !== 'web' || typeof window === 'undefined') return;
+  const params = new URLSearchParams(window.location.search);
+  const menuType = filterMenuTypes[selectedFilter];
+
+  if (keyword) params.set('q', keyword);
+  else params.delete('q');
+
+  if (menuType) {
+    params.set('filter', filters[selectedFilter]);
+    params.set('menuType', menuType);
+  } else {
+    params.delete('filter');
+    params.delete('menuType');
+  }
+
+  const query = params.toString();
+  const nextUrl = `${window.location.pathname}${query ? `?${query}` : ''}`;
+  window.history.replaceState(window.history.state, '', nextUrl);
+}
+
 export default function RestaurantsTabScreen() {
   const navigation = useNavigation<NativeStackNavigationProp<RootStackParamList, 'RestaurantsTab'>>();
-  const [selectedFilter, setSelectedFilter] = useState(0);
-  const [searchQuery, setSearchQuery] = useState('');
-  const [debouncedSearchQuery, setDebouncedSearchQuery] = useState('');
+  const initialSearchQuery = getInitialSearchQuery();
+  const [selectedFilter, setSelectedFilter] = useState(getInitialFilterIndex);
+  const [searchQuery, setSearchQuery] = useState(initialSearchQuery);
+  const [debouncedSearchQuery, setDebouncedSearchQuery] = useState(initialSearchQuery);
   const [restaurants, setRestaurants] = useState<Restaurant[]>([]);
   const [totalCount, setTotalCount] = useState(0);
   const [loading, setLoading] = useState(true);
@@ -158,6 +196,10 @@ export default function RestaurantsTabScreen() {
 
     return () => clearTimeout(timer);
   }, [searchQuery]);
+
+  useEffect(() => {
+    replaceWebSearchState(debouncedSearchQuery, selectedFilter);
+  }, [debouncedSearchQuery, selectedFilter]);
 
   useFocusEffect(useCallback(() => {
     const controller = new AbortController();
