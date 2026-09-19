@@ -11,6 +11,7 @@ import {
   View,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
+import { getVersionedProfileImageUrl } from '../../../utils/profileImageVersion';
 
 import type { PlaceReview, ReviewPayload } from '../api';
 
@@ -143,7 +144,10 @@ export default function ReviewSection({
   const renderReviewAvatar = (review: PlaceReview, canManageReview: boolean) => {
     const profileImageUrl = review.profileImageUrl ?? (canManageReview ? currentUserProfileImageUrl : null);
     return profileImageUrl ? (
-      <Image source={{ uri: profileImageUrl }} style={styles.reviewAvatar} />
+      <Image
+        source={{ uri: canManageReview ? getVersionedProfileImageUrl(profileImageUrl) ?? profileImageUrl : profileImageUrl }}
+        style={styles.reviewAvatar}
+      />
     ) : (
       <View style={styles.reviewAvatarFallback}>
         <Ionicons name="person" size={18} color={COLORS.primary} />

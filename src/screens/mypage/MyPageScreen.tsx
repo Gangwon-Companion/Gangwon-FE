@@ -1,6 +1,7 @@
 import { Alert } from '../../utils/alert';
 import { notifyCommunityChanged } from '../../utils/communityEvents';
 import { notifyPlaceReviewChanged } from '../../utils/placeReviewEvents';
+import { bumpProfileImageVersion, getVersionedProfileImageUrl } from '../../utils/profileImageVersion';
 import React, { useCallback, useMemo, useState } from 'react';
 import * as ImagePicker from 'expo-image-picker';
 import {
@@ -306,6 +307,10 @@ export default function MyPageScreen() {
       closeEditor();
       Alert.alert('변경 완료', '비밀번호가 변경되었습니다.');
     } catch (submitError) {
+      if (submitError instanceof ApiError && submitError.status === 401) {
+        Alert.alert('변경 실패', '현재 비밀번호가 올바르지 않습니다.');
+        return;
+      }
       if (handleAuthError(submitError)) return;
       Alert.alert('변경 실패', errorMessage(submitError));
     } finally {
@@ -331,6 +336,7 @@ export default function MyPageScreen() {
       const asset = result.assets[0];
       const uploaded = await uploadProfileImage(asset.uri, asset.fileName ?? `profile-${Date.now()}.jpg`, asset.mimeType ?? 'image/jpeg');
       await changeProfileImage(uploaded.s3Key);
+      bumpProfileImageVersion();
       setData((previous) => previous ? { ...previous, profileImageUrl: uploaded.url } : previous);
       notifyCommunityChanged();
       await load(undefined, true);
@@ -348,6 +354,7 @@ export default function MyPageScreen() {
     setProfileSaving(true);
     try {
       await changeProfileImage(null);
+      bumpProfileImageVersion();
       setData((previous) => previous ? { ...previous, profileImageUrl: null } : previous);
       notifyCommunityChanged();
       await load(undefined, true);
@@ -582,7 +589,7 @@ export default function MyPageScreen() {
           {loading ? <ActivityIndicator color={COLORS.white} /> : data ? (
             <View style={styles.profileRow}>
               <TouchableOpacity style={styles.avatarButton} onPress={openProfileImageOptions} activeOpacity={0.84}>
-                {data.profileImageUrl ? <Image source={{ uri: data.profileImageUrl }} style={styles.avatarImage} /> : <Ionicons name="person" size={42} color={COLORS.primary} />}
+                {data.profileImageUrl ? <Image source={{ uri: getVersionedProfileImageUrl(data.profileImageUrl) ?? data.profileImageUrl }} style={styles.avatarImage} /> : <Ionicons name="person" size={42} color={COLORS.primary} />}
                 <View style={styles.cameraBadge}>
                   {profileSaving ? <ActivityIndicator color={COLORS.white} size="small" /> : <Ionicons name="camera" size={15} color={COLORS.white} />}
                 </View>

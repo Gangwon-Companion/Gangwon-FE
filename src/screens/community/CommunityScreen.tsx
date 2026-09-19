@@ -1,6 +1,7 @@
 import { useDesktopLayout } from '../../hooks/useContentWidth';
 import { Alert } from '../../utils/alert';
 import { notifyCommunityChanged, subscribeCommunityChanged } from '../../utils/communityEvents';
+import { getVersionedProfileImageUrl, subscribeProfileImageVersionChanged } from '../../utils/profileImageVersion';
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import * as ImagePicker from 'expo-image-picker';
 import {
@@ -144,7 +145,8 @@ function toComment(comment: CommunityApiComment): CommunityPost['comments'][numb
 }
 
 function getAuthorProfileImage(post: CommunityApiPostSummary, currentUserProfileImageUrl?: string | null) {
-  return post.profileImageUrl ?? post.authorProfileImageUrl ?? (post.isMine ? currentUserProfileImageUrl : null);
+  const profileImageUrl = post.profileImageUrl ?? post.authorProfileImageUrl ?? (post.isMine ? currentUserProfileImageUrl : null);
+  return post.isMine ? getVersionedProfileImageUrl(profileImageUrl) : profileImageUrl;
 }
 
 function getAuthorName(post: CommunityApiPostSummary, currentUserNickname?: string | null) {
@@ -273,9 +275,18 @@ export default function CommunityScreen() {
 
   useEffect(() => {
     setPosts((current) => current.map((post) => (
-      post.isMine ? { ...post, author: currentUserNickname ?? post.author, avatar: currentUserProfileImageUrl } : post
+      post.isMine ? { ...post, author: currentUserNickname ?? post.author, avatar: getVersionedProfileImageUrl(currentUserProfileImageUrl) } : post
     )));
   }, [currentUserNickname, currentUserProfileImageUrl]);
+
+  useEffect(() => subscribeProfileImageVersionChanged(() => {
+    void getMyPage()
+      .then((user) => {
+        setCurrentUserProfileImageUrl(user.profileImageUrl);
+        setCurrentUserNickname(user.nickname);
+      })
+      .catch(() => undefined);
+  }), []);
 
   useEffect(() => {
     let active = true;

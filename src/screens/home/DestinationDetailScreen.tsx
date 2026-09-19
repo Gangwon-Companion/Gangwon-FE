@@ -103,6 +103,7 @@ export default function DestinationDetailScreen({ navigation, route }: Props) {
   const { destinationId, title = '여행지', firstImage, pet = false, accessibility = false } = route.params;
   const width = useContentWidth();
   const imageWidth = Math.max(280, desktop ? width - 64 : width - PAGE_HORIZONTAL_PADDING);
+  const heroImageHeight = Math.max(210, Math.min(desktop ? 420 : 280, imageWidth * 9 / 16));
   const [detail, setDetail] = useState<DestinationDetail | null>(null);
   const [imageIndex, setImageIndex] = useState(0);
   const [fallbackNotice, setFallbackNotice] = useState<string | null>(null);
@@ -311,7 +312,8 @@ export default function DestinationDetailScreen({ navigation, route }: Props) {
                     <Image
                       key={imageUrl}
                       source={{ uri: imageUrl }}
-                      style={[styles.heroImage, { width: imageWidth }]}
+                      resizeMode="contain"
+                      style={[styles.heroImage, { width: imageWidth, height: heroImageHeight }]}
                     />
                   ))}
                 </ScrollView>
@@ -330,7 +332,7 @@ export default function DestinationDetailScreen({ navigation, route }: Props) {
                 )}
               </View>
             ) : (
-              <View style={styles.imagePlaceholder}>
+              <View style={[styles.imagePlaceholder, { width: imageWidth, height: heroImageHeight }]}>
                 <Ionicons name="image-outline" size={42} color={COLORS.textMuted} />
                 <Text style={styles.placeholderText}>등록된 사진이 없습니다.</Text>
               </View>
@@ -543,7 +545,6 @@ const styles = StyleSheet.create({
     backgroundColor: '#EDF1F3',
   },
   heroImage: {
-    height: 240,
     borderRadius: 12,
     backgroundColor: '#EDF1F3',
   },
@@ -576,7 +577,6 @@ const styles = StyleSheet.create({
     fontWeight: '700',
   },
   imagePlaceholder: {
-    height: 220,
     borderRadius: 12,
     alignItems: 'center',
     justifyContent: 'center',

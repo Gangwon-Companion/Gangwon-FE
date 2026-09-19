@@ -109,6 +109,7 @@ export default function HotelDetailScreen({ navigation, route }: Props) {
   const { lodgingId, name = '숙소', imageUrl, rating, region } = route.params;
   const width = useContentWidth();
   const imageWidth = Math.max(280, desktop ? width - 64 : width - PAGE_HORIZONTAL_PADDING);
+  const heroImageHeight = Math.max(210, Math.min(desktop ? 420 : 280, imageWidth * 9 / 16));
   const [detail, setDetail] = useState<LodgingDetailResponse | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -296,7 +297,8 @@ export default function HotelDetailScreen({ navigation, route }: Props) {
                 <Image
                   key={photo}
                   source={{ uri: photo }}
-                  style={[styles.heroImage, { width: imageWidth }]}
+                  resizeMode="contain"
+                  style={[styles.heroImage, { width: imageWidth, height: heroImageHeight }]}
                 />
               ))}
             </ScrollView>
@@ -315,7 +317,7 @@ export default function HotelDetailScreen({ navigation, route }: Props) {
             ) : null}
           </View>
         ) : (
-          <View style={[styles.imagePlaceholder, { width: imageWidth }]}>
+          <View style={[styles.imagePlaceholder, { width: imageWidth, height: heroImageHeight }]}>
             <Ionicons name="bed-outline" size={52} color={COLORS.textMuted} />
             <Text style={styles.placeholderText}>등록된 사진이 없습니다</Text>
           </View>
@@ -417,9 +419,8 @@ const styles = StyleSheet.create({
   scroll: { flex: 1 },
   content: { paddingHorizontal: 20, paddingTop: 20, paddingBottom: 32 },
   imageSlider: { borderRadius: 12, backgroundColor: '#EDF1F3' },
-  heroImage: { height: 240, borderRadius: 12, backgroundColor: COLORS.border },
+  heroImage: { borderRadius: 12, backgroundColor: COLORS.border },
   imagePlaceholder: {
-    height: 220,
     borderRadius: 12,
     alignItems: 'center',
     justifyContent: 'center',

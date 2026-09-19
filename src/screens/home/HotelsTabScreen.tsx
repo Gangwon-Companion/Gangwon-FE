@@ -75,10 +75,26 @@ const formatLocationText = (hotel: Hotel) => {
   return hotel.address ?? hotel.region ?? '주소 정보 없음';
 };
 
+function getInitialSearchQuery() {
+  if (Platform.OS !== 'web' || typeof window === 'undefined') return '';
+  return new URLSearchParams(window.location.search).get('q') ?? '';
+}
+
+function replaceWebSearchQuery(keyword: string) {
+  if (Platform.OS !== 'web' || typeof window === 'undefined') return;
+  const params = new URLSearchParams(window.location.search);
+  if (keyword) params.set('q', keyword);
+  else params.delete('q');
+  const query = params.toString();
+  const nextUrl = `${window.location.pathname}${query ? `?${query}` : ''}`;
+  window.history.replaceState(window.history.state, '', nextUrl);
+}
+
 export default function HotelsTabScreen() {
   const navigation = useNavigation<NativeStackNavigationProp<RootStackParamList, 'HotelsTab'>>();
-  const [searchQuery, setSearchQuery] = useState('');
-  const [debouncedSearchQuery, setDebouncedSearchQuery] = useState('');
+  const initialSearchQuery = getInitialSearchQuery();
+  const [searchQuery, setSearchQuery] = useState(initialSearchQuery);
+  const [debouncedSearchQuery, setDebouncedSearchQuery] = useState(initialSearchQuery);
   const [hotels, setHotels] = useState<Hotel[]>([]);
   const [totalCount, setTotalCount] = useState(0);
   const [loading, setLoading] = useState(true);
@@ -154,6 +170,10 @@ export default function HotelsTabScreen() {
 
     return () => clearTimeout(timer);
   }, [searchQuery]);
+
+  useEffect(() => {
+    replaceWebSearchQuery(debouncedSearchQuery);
+  }, [debouncedSearchQuery]);
 
   useFocusEffect(useCallback(() => {
     const controller = new AbortController();
