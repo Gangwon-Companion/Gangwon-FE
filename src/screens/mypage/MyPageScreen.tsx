@@ -337,7 +337,6 @@ export default function MyPageScreen() {
       const uploaded = await uploadProfileImage(asset.uri, asset.fileName ?? `profile-${Date.now()}.jpg`, asset.mimeType ?? 'image/jpeg');
       await changeProfileImage(uploaded.s3Key);
       bumpProfileImageVersion();
-      setData((previous) => previous ? { ...previous, profileImageUrl: uploaded.url } : previous);
       notifyCommunityChanged();
       await load(undefined, true);
     } catch (profileError) {
